@@ -176,6 +176,16 @@ export default function App() {
 
       setDeudas(parsedDeudas);
       setPagos(parsedPagos);
+
+      if (resJson.clientLimits) {
+        const parsedLimits: Record<string, number> = {};
+        Object.entries(resJson.clientLimits).forEach(([k, v]) => {
+          parsedLimits[k] = parseFloat(v as any) || 0;
+        });
+        setClientLimits(parsedLimits);
+        localStorage.setItem("df_client_limits", JSON.stringify(parsedLimits));
+      }
+
       setSyncStatus('synced');
       showToast("Respaldo en Google Drive sincronizado con éxito.", "success");
     } catch (err) {
@@ -315,7 +325,8 @@ export default function App() {
   };
 
   // Set client credit limits and save to local storage
-  const handleSetClientLimit = (contacto: string, limit: number) => {
+  const handleSetClientLimit = async (contacto: string, limit: number) => {
+    // OPTIMISTIC UPDATE
     setClientLimits(prev => {
       const updated = { ...prev };
       if (limit <= 0) {
@@ -331,6 +342,38 @@ export default function App() {
       showToast(`Límite de crédito removido para ${contacto}.`, "success");
     } else {
       showToast(`Límite de crédito de $${limit} asignado para ${contacto}.`, "success");
+    }
+
+    if (!isLocalMode && sheetUrl) {
+      try {
+        const payload = {
+          action: "setClientLimit",
+          contacto,
+          limite: limit
+        };
+
+        const res = await fetch(sheetUrl, {
+          method: 'POST',
+          mode: 'cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.clientLimits) {
+            const parsedLimits: Record<string, number> = {};
+            Object.entries(data.clientLimits).forEach(([k, v]) => {
+              parsedLimits[k] = parseFloat(v as any) || 0;
+            });
+            setClientLimits(parsedLimits);
+            localStorage.setItem("df_client_limits", JSON.stringify(parsedLimits));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync limit to Google Sheets", err);
+        showToast("No se pudo sincronizar el límite en Google Sheets. Se guardó localmente por ahora.", "warning");
+      }
     }
   };
 

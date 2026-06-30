@@ -157,9 +157,9 @@ export default function SetupGuide({
   };
 
   const appsScriptCode = `/* ====================================================================
-* CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO (V3)
+* CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO (V4 - LÍMITES)
 * ====================================================================
-* 1. Crea una Google Sheet de Google Drive en blanco.
+* 1. Crea una Google Sheet de Google Drive en blanco o abre tu Sheet actual.
 * 2. Ve a "Extensiones" > "Apps Script".
 * 3. Borra todo lo que esté en el editor y pega este código completo.
 * 4. Haz click en "Guardar" (icono de disquete).
@@ -178,9 +178,19 @@ function doGet(e) {
   var deudas = getSheetData(sheet.getSheetByName("Deudas"));
   var pagos = getSheetData(sheet.getSheetByName("Pagos"));
   
+  // Obtener limites de credito por cliente
+  var limitesData = getSheetData(sheet.getSheetByName("Limites"));
+  var clientLimits = {};
+  limitesData.forEach(function(row) {
+    if (row.contacto) {
+      clientLimits[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
+    }
+  });
+  
   var result = {
     deudas: deudas,
-    pagos: pagos
+    pagos: pagos,
+    clientLimits: clientLimits
   };
   
   return ContentService.createTextOutput(JSON.stringify(result))
@@ -280,15 +290,47 @@ function doPost(e) {
         }
       }
     }
+  } else if (action === "setClientLimit") {
+    var sLimites = sheet.getSheetByName("Limites");
+    var data = sLimites.getDataRange().getValues();
+    var found = false;
+    var targetContact = params.contacto.trim();
+    var targetLimit = parseFloat(params.limite) || 0;
+    
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0].toString().toLowerCase() == targetContact.toLowerCase()) {
+        if (targetLimit <= 0) {
+          sLimites.deleteRow(i + 1);
+        } else {
+          sLimites.getRange(i + 1, 2).setValue(targetLimit);
+        }
+        found = true;
+        break;
+      }
+    }
+    if (!found && targetLimit > 0) {
+      sLimites.appendRow([targetContact, targetLimit]);
+    }
   }
   
   var deudasActualizadas = getSheetData(sheet.getSheetByName("Deudas"));
   var pagosActualizados = getSheetData(sheet.getSheetByName("Pagos"));
   
+  // Obtener limites actualizados
+  var sLimitesActualizados = sheet.getSheetByName("Limites");
+  var limitesDataActualizados = getSheetData(sLimitesActualizados);
+  var clientLimitsActualizados = {};
+  limitesDataActualizados.forEach(function(row) {
+    if (row.contacto) {
+      clientLimitsActualizados[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
+    }
+  });
+  
   var responsePayload = {
     status: "success",
     deudas: deudasActualizadas,
-    pagos: pagosActualizados
+    pagos: pagosActualizados,
+    clientLimits: clientLimitsActualizados
   };
   
   return ContentService.createTextOutput(JSON.stringify(responsePayload))
@@ -345,6 +387,24 @@ function crearHojasSiNoExisten(sheet) {
         var nextColP = pagos.getLastColumn() + 1;
         pagos.getRange(1, nextColP).setValue(expectedHeadersP[j]);
         headersP.push(expectedHeadersP[j]);
+      }
+    }
+  }
+
+  var limites = sheet.getSheetByName("Limites");
+  if (!limites) {
+    limites = sheet.insertSheet("Limites");
+    limites.appendRow(["contacto", "limite"]);
+  } else {
+    var rangeL = limites.getRange(1, 1, 1, limites.getLastColumn());
+    var headersL = rangeL.getValues()[0];
+    var expectedHeadersL = ["contacto", "limite"];
+    
+    for (var k = 0; k < expectedHeadersL.length; k++) {
+      if (headersL.indexOf(expectedHeadersL[k]) === -1) {
+        var nextColL = limites.getLastColumn() + 1;
+        limites.getRange(1, nextColL).setValue(expectedHeadersL[k]);
+        headersL.push(expectedHeadersL[k]);
       }
     }
   }
