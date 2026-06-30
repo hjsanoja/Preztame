@@ -70,6 +70,16 @@ export default function App() {
   const [isAbonoFormOpen, setIsAbonoFormOpen] = useState(false);
   const [abonoDebtId, setAbonoDebtId] = useState<string | null>(null);
 
+  // Client credit limits state
+  const [clientLimits, setClientLimits] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem("df_client_limits");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   // Custom UI elements (Toast and Confirm boxes)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirm, setConfirm] = useState<ConfirmConfig>({
@@ -302,6 +312,39 @@ export default function App() {
     localStorage.setItem("df_datasource", local ? "local" : "sheets");
     showToast(local ? "Prueba sin conexión local activada." : "Entrando a modo sincronización permanente Sheets.", "info");
     loadData(local ? 'local' : 'sheets', sheetUrl);
+  };
+
+  // Set client credit limits and save to local storage
+  const handleSetClientLimit = (contacto: string, limit: number) => {
+    setClientLimits(prev => {
+      const updated = { ...prev };
+      if (limit <= 0) {
+        delete updated[contacto];
+      } else {
+        updated[contacto] = limit;
+      }
+      localStorage.setItem("df_client_limits", JSON.stringify(updated));
+      return updated;
+    });
+
+    if (limit <= 0) {
+      showToast(`Límite de crédito removido para ${contacto}.`, "success");
+    } else {
+      showToast(`Límite de crédito de $${limit} asignado para ${contacto}.`, "success");
+    }
+  };
+
+  // Restore imported backup data locally
+  const handleImportBackup = (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => {
+    setDeudas(importedDeudas);
+    setPagos(importedPagos);
+    setClientLimits(importedLimits);
+
+    // Save changes using storage manager utilities
+    saveLocalChanges(importedDeudas, importedPagos);
+    localStorage.setItem("df_client_limits", JSON.stringify(importedLimits));
+
+    showToast("¡Copia de seguridad importada con éxito!", "success");
   };
 
   // ================= ACTION DISPATCHERS WITH OPTIMISTIC CODES =================
@@ -801,6 +844,11 @@ export default function App() {
               isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
               activeUser={activeUser}
+              deudas={deudas}
+              pagos={pagos}
+              clientLimits={clientLimits}
+              onSetClientLimit={handleSetClientLimit}
+              onImportBackup={handleImportBackup}
             />
           )}
         </div>
@@ -827,6 +875,8 @@ export default function App() {
         onClose={() => setIsDebtFormOpen(false)}
         onSubmit={handleAddDebt}
         activeUser={activeUser}
+        deudas={deudas}
+        clientLimits={clientLimits}
       />
 
       {/* Form modal to register a repayment/abono */}

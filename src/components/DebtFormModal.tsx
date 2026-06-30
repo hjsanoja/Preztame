@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Debt } from '../types';
 import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
-import { X, Calendar, DollarSign, ArrowUpRight, RefreshCw, Globe } from 'lucide-react';
+import { X, Calendar, DollarSign, ArrowUpRight, RefreshCw, Globe, AlertTriangle } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
 
 interface DebtFormModalProps {
@@ -9,13 +9,17 @@ interface DebtFormModalProps {
   onClose: () => void;
   onSubmit: (data: Omit<Debt, 'id' | 'saldo' | 'estado' | 'creadoPor'>) => void;
   activeUser: string;
+  deudas: Debt[];
+  clientLimits: Record<string, number>;
 }
 
 export default function DebtFormModal({
   isOpen,
   onClose,
   onSubmit,
-  activeUser
+  activeUser,
+  deudas,
+  clientLimits
 }: DebtFormModalProps) {
 
   // Primary state fields
@@ -37,6 +41,37 @@ export default function DebtFormModal({
   const [montoTouched, setMontoTouched] = useState(false);
   const [mesTouched, setMesTouched] = useState(false);
   const [tasaTouched, setTasaTouched] = useState(false);
+
+  // Credit limit calculation for live warning
+  const limitCheck = useMemo(() => {
+    if (!contacto.trim() || !monto) return null;
+    const clientName = contacto.trim();
+    
+    // Find key with case-insensitive search
+    const matchingKey = Object.keys(clientLimits).find(
+      key => key.toLowerCase() === clientName.toLowerCase()
+    );
+    const limit = matchingKey ? clientLimits[matchingKey] : 0;
+    if (!limit || limit <= 0) return null;
+
+    // Sum outstanding balances
+    const currentOutstanding = deudas
+      .filter(d => d.contacto && d.contacto.trim().toLowerCase() === clientName.toLowerCase() && d.estado === 'pendiente')
+      .reduce((sum, d) => sum + d.saldo, 0);
+
+    const newLoanAmount = parseFloat(monto) || 0;
+    const totalEstimated = currentOutstanding + newLoanAmount;
+    const isExceeded = totalEstimated > limit;
+
+    return {
+      limit,
+      currentOutstanding,
+      newLoanAmount,
+      totalEstimated,
+      isExceeded,
+      exceededBy: totalEstimated - limit
+    };
+  }, [contacto, monto, deudas, clientLimits]);
 
   // Helper to load current BCV rate
   const loadBcvRate = async (force = false) => {
@@ -266,6 +301,25 @@ export default function DebtFormModal({
             </div>
             {montoTouched && !isMontoValid && (
               <span className="text-[10px] text-rose-600 mt-1 block">Por favor, introduce un monto válido superior a 0.</span>
+            )}
+
+            {/* Live credit limit indicator */}
+            {limitCheck && limitCheck.isExceeded && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-850 rounded-xl p-3.5 mt-2.5 space-y-1.5">
+                <div className="flex items-center space-x-1.5 font-bold text-xs text-rose-700">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>¡Alerta: Límite de Crédito Superado!</span>
+                </div>
+                <p className="text-[11px] font-normal leading-relaxed text-rose-750">
+                  {contacto.trim()} tiene un límite de <strong>${limitCheck.limit}</strong>. Su deuda activa actual es <strong>${limitCheck.currentOutstanding}</strong> y ascendería a <strong>${limitCheck.totalEstimated}</strong>, superando el límite por <strong>${limitCheck.exceededBy.toFixed(0)}</strong>.
+                </p>
+              </div>
+            )}
+            {limitCheck && !limitCheck.isExceeded && (
+              <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl p-3 mt-2.5 flex items-center justify-between text-[11px]">
+                <span className="font-medium text-emerald-750">Cupo de crédito disponible:</span>
+                <span className="font-mono font-bold text-emerald-700">${(limitCheck.limit - limitCheck.currentOutstanding - limitCheck.newLoanAmount).toFixed(0)} de ${limitCheck.limit}</span>
+              </div>
             )}
           </div>
 

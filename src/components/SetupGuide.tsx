@@ -1,5 +1,10 @@
-import React, { useState } from 'react';
-import { Copy, Check, ExternalLink, HelpCircle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { 
+  Copy, Check, ExternalLink, HelpCircle, FileText, ChevronDown, ChevronUp,
+  AlertTriangle, Download, Upload, Sliders, ShieldAlert, User, Plus, Trash2 
+} from 'lucide-react';
+import { Debt, Payment } from '../types';
+import { formatMonthName } from '../utils/storage';
 
 interface SetupGuideProps {
   sheetUrl: string;
@@ -8,6 +13,12 @@ interface SetupGuideProps {
   isLocalMode: boolean;
   onToggleLocal: (local: boolean) => void;
   activeUser: string;
+  // New additions
+  deudas: Debt[];
+  pagos: Payment[];
+  clientLimits: Record<string, number>;
+  onSetClientLimit: (contacto: string, limit: number) => void;
+  onImportBackup: (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => void;
 }
 
 export default function SetupGuide({
@@ -16,13 +27,134 @@ export default function SetupGuide({
   onClearSettings,
   isLocalMode,
   onToggleLocal,
-  activeUser
+  activeUser,
+  // Destructure new props
+  deudas,
+  pagos,
+  clientLimits,
+  onSetClientLimit,
+  onImportBackup
 }: SetupGuideProps) {
 
   const [urlInput, setUrlInput] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showFaq, setShowFaq] = useState<{ [key: string]: boolean }>({});
+
+  // NEW STUFF: Client Limits & Backup
+  const [tempLimits, setTempLimits] = useState<Record<string, string>>({});
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactLimit, setNewContactLimit] = useState('');
+
+  const clientOutstandingBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+    deudas.forEach(d => {
+      if (d.contacto) {
+        const name = d.contacto.trim();
+        if (d.estado === 'pendiente') {
+          balances[name] = (balances[name] || 0) + d.saldo;
+        } else if (balances[name] === undefined) {
+          balances[name] = 0;
+        }
+      }
+    });
+    return balances;
+  }, [deudas]);
+
+  const allContactsWithLimitData = useMemo(() => {
+    const contactsSet = new Set<string>();
+    deudas.forEach(d => {
+      if (d.contacto) contactsSet.add(d.contacto.trim());
+    });
+    Object.keys(clientLimits).forEach(c => contactsSet.add(c.trim()));
+    
+    return Array.from(contactsSet).map(name => {
+      const activeBalance = clientOutstandingBalances[name] || 0;
+      const limit = clientLimits[name] || 0;
+      return {
+        name,
+        activeBalance,
+        limit,
+        isExceeded: limit > 0 && activeBalance > limit,
+        percent: limit > 0 ? (activeBalance / limit) * 100 : 0
+      };
+    }).sort((a, b) => b.activeBalance - a.activeBalance || a.name.localeCompare(b.name));
+  }, [deudas, clientLimits, clientOutstandingBalances]);
+
+  const handleTempLimitChange = (name: string, value: string) => {
+    setTempLimits(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveLimit = (name: string) => {
+    const val = tempLimits[name];
+    if (val === undefined) return;
+    const limitNum = parseFloat(val);
+    if (isNaN(limitNum) || limitNum < 0) {
+      onSetClientLimit(name, 0); // remove/reset
+    } else {
+      onSetClientLimit(name, limitNum);
+    }
+  };
+
+  const handleAddCustomLimit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContactName.trim()) return;
+    const limitNum = parseFloat(newContactLimit) || 0;
+    onSetClientLimit(newContactName.trim(), limitNum);
+    setNewContactName('');
+    setNewContactLimit('');
+  };
+
+  // Backup handlers
+  const handleExportBackup = () => {
+    const backupData = {
+      version: "deudaflow-v3",
+      timestamp: new Date().toISOString(),
+      deudas,
+      pagos,
+      clientLimits
+    };
+    
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `deudaflow-respaldo-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        
+        if (!parsed.deudas || !Array.isArray(parsed.deudas)) {
+          alert("El archivo de respaldo no es válido. Debe contener un listado de deudas.");
+          return;
+        }
+
+        if (window.confirm("¿Estás seguro de que deseas importar este respaldo? Esto reemplazará temporalmente los datos locales actuales de este navegador.")) {
+          onImportBackup(
+            parsed.deudas,
+            parsed.pagos || [],
+            parsed.clientLimits || {}
+          );
+        }
+      } catch (err) {
+        alert("Error al parsear el archivo JSON de respaldo.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
 
   const appsScriptCode = `/* ====================================================================
 * CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO (V3)
@@ -356,6 +488,36 @@ function crearHojasSiNoExisten(sheet) {
           </div>
         )}
 
+        {/* Backup Card */}
+        <div className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm space-y-4">
+          <h4 className="font-bold text-[#040d53] text-[15px] flex items-center">
+            <Download className="h-4 w-4 mr-2 text-[#70C145]" />
+            Respaldos Offline (JSON)
+          </h4>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Descarga una copia completa de tus registros en tu computadora. Ideal para proteger tu capital si limpias el navegador o para migrar de dispositivo.
+          </p>
+          <div className="flex flex-col gap-2 pt-1">
+            <button
+              onClick={handleExportBackup}
+              className="w-full bg-[#040d53] hover:opacity-95 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Exportar Copia (.json)</span>
+            </button>
+            <label className="w-full bg-slate-50 hover:bg-slate-100 border border-[#e2e8f0] font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 flex items-center justify-center space-x-2 cursor-pointer text-slate-700">
+              <Upload className="h-3.5 w-3.5 text-slate-500" />
+              <span>Importar Respaldo</span>
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleImportBackup}
+                className="hidden"
+              />
+            </label>
+          </div>
+        </div>
+
         {/* Diagnostic Section */}
         <div className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm space-y-3">
           <h4 className="font-bold text-[#ba1a1a] text-xs uppercase tracking-wider">Guía Diagnóstica de Errores</h4>
@@ -513,6 +675,121 @@ function crearHojasSiNoExisten(sheet) {
               )}
             </div>
 
+          </div>
+        </div>
+
+        {/* Client Credit Limits Card */}
+        <div className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm space-y-6">
+          <div>
+            <h3 className="font-bold text-[#040d53] text-[18px] flex items-center">
+              <Sliders className="h-5 w-5 mr-2 text-[#70C145]" />
+              Límites de Crédito por Cliente
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Asigna un límite máximo de deuda activa por cliente. Si intentas registrar un préstamo que supere este límite, la aplicación te mostrará alertas de advertencia.
+            </p>
+          </div>
+
+          {/* Form to add a new/custom contact limit */}
+          <form onSubmit={handleAddCustomLimit} className="bg-slate-50 border border-[#eeeef0] p-4 rounded-xl flex flex-col sm:flex-row items-end gap-3">
+            <div className="w-full sm:flex-1">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Nombre de Cliente</label>
+              <input
+                type="text"
+                placeholder="Ej. Juan Pérez"
+                value={newContactName}
+                onChange={(e) => setNewContactName(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-[#040d53] bg-white font-medium"
+                required
+              />
+            </div>
+            <div className="w-full sm:w-32">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Límite ($)</label>
+              <input
+                type="number"
+                placeholder="Ej. 500"
+                value={newContactLimit}
+                onChange={(e) => setNewContactLimit(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-[#040d53] bg-white font-mono font-bold"
+                required
+                min="1"
+              />
+            </div>
+            <button
+              type="submit"
+              className="bg-[#040d53] hover:opacity-95 text-white font-bold text-xs py-2 px-4 rounded-lg h-9 transition active:scale-95 flex items-center justify-center space-x-1 cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Fijar Límite</span>
+            </button>
+          </form>
+
+          {/* List of Contacts & Limits */}
+          <div className="space-y-1 max-h-96 overflow-y-auto pr-1 scrollbar-thin">
+            {allContactsWithLimitData.length > 0 ? (
+              allContactsWithLimitData.map(item => (
+                <div key={item.name} className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 py-3.5 last:border-0 gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-extrabold text-slate-800 text-sm">{item.name}</span>
+                      {item.isExceeded && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
+                          <AlertTriangle className="h-2.5 w-2.5 mr-1" />
+                          Excede Límite
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                      <span>Deuda activa: <strong className={item.activeBalance > 0 ? "text-[#040d53] font-bold" : "text-slate-400"}>${item.activeBalance.toFixed(0)}</strong></span>
+                      <span>Límite actual: <strong className="text-slate-700 font-bold">{item.limit > 0 ? `$${item.limit}` : 'Sin límite'}</strong></span>
+                    </div>
+
+                    {/* Limit progress bar if limit is set */}
+                    {item.limit > 0 && (
+                      <div className="w-48 bg-slate-100 h-1 rounded-full overflow-hidden mt-1">
+                        <div 
+                          style={{ width: `${Math.min(100, item.percent)}%` }} 
+                          className={`h-full transition-all duration-300 ${item.isExceeded ? 'bg-rose-650' : 'bg-[#70C145]'}`}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center space-x-2 self-end sm:self-center">
+                    <div className="relative w-24">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-2 text-slate-400 font-bold text-xs">$</span>
+                      <input
+                        type="number"
+                        placeholder="Sin Límite"
+                        value={tempLimits[item.name] !== undefined ? tempLimits[item.name] : (item.limit || '')}
+                        onChange={(e) => handleTempLimitChange(item.name, e.target.value)}
+                        className="w-full pl-5 pr-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-[#040d53] font-mono"
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleSaveLimit(item.name)}
+                      className="bg-slate-100 hover:bg-indigo-900 hover:text-white text-slate-700 text-[10px] font-bold px-3 py-1.5 rounded-lg h-[30px] transition"
+                    >
+                      Fijar
+                    </button>
+                    {item.limit > 0 && (
+                      <button
+                        onClick={() => onSetClientLimit(item.name, 0)}
+                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-slate-50 transition"
+                        title="Eliminar límite de crédito"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-6 text-slate-450 text-xs">
+                No hay clientes registrados en el sistema de préstamos todavía.
+              </div>
+            )}
           </div>
         </div>
 

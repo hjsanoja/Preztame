@@ -141,7 +141,9 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
     const dataMap: { [key: string]: { prestado: number; saldo: number } } = {};
     
     viewDeudas.forEach(d => {
-      const key = d.mesPago || d.fecha.slice(0, 7) || 'Otros';
+      // Ensure the key is exactly "YYYY-MM" (first 7 characters)
+      const rawMonth = d.mesPago || d.fecha || '';
+      const key = rawMonth.slice(0, 7) || 'Otros';
       if (!dataMap[key]) {
         dataMap[key] = { prestado: 0, saldo: 0 };
       }
@@ -149,11 +151,15 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
       dataMap[key].saldo += d.saldo;
     });
 
-    const sortedKeys = Object.keys(dataMap).sort();
+    const sortedKeys = Object.keys(dataMap).filter(k => k !== 'Otros').sort();
+    if (dataMap['Otros']) {
+      sortedKeys.push('Otros');
+    }
+
     return sortedKeys.map(key => {
       const recovered = dataMap[key].prestado - dataMap[key].saldo;
       return {
-        mes: formatMonthName(key),
+        mes: key === 'Otros' ? 'Otros' : formatMonthName(key),
         sortKey: key,
         montoTotal: Number(dataMap[key].prestado.toFixed(2)),
         saldoPendiente: Number(dataMap[key].saldo.toFixed(2)),
@@ -564,7 +570,7 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
       </div>
 
       {/* Strategic Portfolio Distribution Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="w-full">
         
         {/* Widget 1: Balance por Cuentas */}
         <div id="portfolio-account-distribution" className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
@@ -611,50 +617,6 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
             ) : (
               <span>💡 Permite supervisar el balance de riesgo y los montos prestados por cada administrador.</span>
             )}
-          </p>
-        </div>
-
-        {/* Widget 2: Tipo de Financiamiento */}
-        <div id="portfolio-type-distribution" className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-          <div>
-            <h4 className="font-bold text-[#040d53] text-base">Clasificación por Propósito de Deuda</h4>
-            <p className="text-xs text-slate-500">Distribución del saldo activo entre préstamos de confianza y comerciales</p>
-          </div>
-
-          <div className="mt-4 space-y-4">
-            <div className="flex justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-[#50599c] mr-1.5" />Personales / Favores</span>
-              <span className="font-mono">{formatValue(balanceDistributionByType.favor)} ({Math.round(balanceDistributionByType.favorPercent)}%)</span>
-            </div>
-            
-            <div className="flex justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-[#15191c] mr-1.5" />Negocios / Comerciales</span>
-              <span className="font-mono">{formatValue(balanceDistributionByType.negocio)} ({Math.round(balanceDistributionByType.negocioPercent)}%)</span>
-            </div>
-
-            {/* Split Bar */}
-            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden flex">
-              {balanceDistributionByType.total > 0 ? (
-                <>
-                  <div 
-                    style={{ width: `${balanceDistributionByType.favorPercent}%` }} 
-                    className="bg-[#50599c] h-full transition-all duration-300"
-                    title={`Favor: ${Math.round(balanceDistributionByType.favorPercent)}%`}
-                  />
-                  <div 
-                    style={{ width: `${balanceDistributionByType.negocioPercent}%` }} 
-                    className="bg-[#15191c] h-full transition-all duration-300"
-                    title={`Negocio: ${Math.round(balanceDistributionByType.negocioPercent)}%`}
-                  />
-                </>
-              ) : (
-                <div className="w-full bg-slate-100 h-full" />
-              )}
-            </div>
-          </div>
-
-          <p className="text-[10px] text-slate-400 mt-4 pt-3 border-t border-slate-100">
-            <span>💡 Separa deudas comerciales (orientadas a generar rendimiento) de deudas de apoyo personal o familiar de confianza.</span>
           </p>
         </div>
 
