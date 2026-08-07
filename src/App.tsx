@@ -662,25 +662,25 @@ export default function App() {
         })}
       </div>
 
-      {/* Main Header with Google Gemini / Stitch Aesthetic */}
-      <header className="bg-white/85 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
+      {/* Main Header with Google Gemini Light Visual System */}
+      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
           <div className="flex flex-col sm:flex-row justify-between sm:h-18 items-start sm:items-center py-3.5 sm:py-0 gap-3">
             
-            {/* Logo and branding mark */}
+            {/* Logo and branding mark with Gemini Sparkle */}
             <div className="flex items-center space-x-3.5">
-              <div className="gemini-gradient-bg text-white p-2.5 rounded-2xl shadow-md shadow-indigo-500/20 transform hover:scale-105 transition duration-200 flex items-center justify-center">
-                <ArrowRightLeft className="h-5 w-5 stroke-[2.2]" />
+              <div className="gemini-gradient-bg text-white p-2.5 rounded-2xl shadow-sm shadow-blue-500/20 transform hover:scale-105 transition duration-200 flex items-center justify-center">
+                <Sparkles className="h-5 w-5 stroke-[2.2]" />
               </div>
               <div>
                 <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span>DeudaFlow</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100/80 font-mono">
-                    <Sparkles className="h-2.5 w-2.5 text-indigo-500" />
-                    Nina & Nando
+                  <span className="gemini-gradient-text">DeudaFlow</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-100/80 font-mono">
+                    <Sparkles className="h-2.5 w-2.5 text-blue-500" />
+                    Gemini AI Edition
                   </span>
                 </h1>
-                <p className="text-[11px] text-slate-500 font-medium tracking-tight">Control de finanzas compartidas y préstamos</p>
+                <p className="text-[11px] text-slate-500 font-medium tracking-tight">Finanzas compartidas y préstamos entre Nina y Nando</p>
               </div>
             </div>
 
@@ -688,24 +688,24 @@ export default function App() {
             <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
               
               {/* Operator Badge Switcher */}
-              <div className="flex items-center space-x-1 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 font-mono hidden md:inline">Operando:</span>
+              <div className="flex items-center space-x-1 bg-slate-100/80 p-1 rounded-full border border-slate-200/80">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 font-mono hidden md:inline">Operando:</span>
                 <button 
                   onClick={() => handleUserToggle('Nina')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
                     activeUser === 'Nina' 
-                      ? 'bg-slate-900 text-white shadow-xs font-bold' 
+                      ? 'bg-slate-900 text-white shadow-xs' 
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                  <span className="w-2 h-2 rounded-full bg-blue-400" />
                   Nina
                 </button>
                 <button 
                   onClick={() => handleUserToggle('Nando')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
                     activeUser === 'Nando' 
-                      ? 'bg-amber-500 text-slate-950 shadow-xs font-bold' 
+                      ? 'bg-amber-500 text-slate-950 shadow-xs' 
                       : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
@@ -722,9 +722,9 @@ export default function App() {
                     showToast("Abriendo guía de configuración paso a paso.", "info");
                   }
                 }}
-                className={`flex items-center space-x-2 border px-3 py-1.5 rounded-full text-xs font-semibold select-none transition ${
+                className={`flex items-center space-x-2 border px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition ${
                   syncStatus === 'synced' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' :
-                  syncStatus === 'pending' ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' :
+                  syncStatus === 'pending' ? 'bg-blue-50/80 border-blue-200 text-blue-900' :
                   syncStatus === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800 cursor-pointer hover:bg-rose-100' :
                   'bg-slate-100 border-slate-200 text-slate-700'
                 }`}
@@ -732,7 +732,7 @@ export default function App() {
               >
                 <span className={`h-2 w-2 rounded-full ${
                   syncStatus === 'synced' ? 'bg-emerald-500 shadow-xs' :
-                  syncStatus === 'pending' ? 'bg-indigo-500 animate-pulse' :
+                  syncStatus === 'pending' ? 'bg-blue-500 animate-pulse' :
                   syncStatus === 'error' ? 'bg-rose-600 animate-ping' :
                   'bg-slate-400'
                 }`} />
@@ -753,17 +753,19 @@ export default function App() {
       {/* Main Container Wrapper */}
       <main className="max-w-[1280px] mx-auto px-4 sm:px-8 w-full mt-6 flex-grow">
         
-        {/* Global Account Select View */}
-        <div id="account-view-filter-bar" className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Global Account Select View with Gemini Styling */}
+        <div id="account-view-filter-bar" className="gemini-card rounded-2xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block font-mono mb-0.5">Visor Consolidado</span>
+            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest block font-mono mb-0.5 flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-blue-500" /> Visor Consolidado
+            </span>
             <span className="text-xs sm:text-sm font-semibold text-slate-700">Filtrar registros e historial por cuenta:</span>
           </div>
           
-          <div className="flex bg-slate-100/80 p-1 rounded-xl self-start sm:self-center border border-slate-200/60 w-full sm:w-auto">
+          <div className="flex bg-slate-100/90 p-1 rounded-full self-start sm:self-center border border-slate-200/80 w-full sm:w-auto">
             <button 
               onClick={() => handleAccountViewToggle('Ambos')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Ambos' 
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -773,7 +775,7 @@ export default function App() {
             </button>
             <button 
               onClick={() => handleAccountViewToggle('Nina')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Nina' 
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -783,7 +785,7 @@ export default function App() {
             </button>
             <button 
               onClick={() => handleAccountViewToggle('Nando')}
-              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Nando' 
                   ? 'bg-amber-500 text-slate-950 shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
@@ -795,12 +797,12 @@ export default function App() {
         </div>
 
         {/* Tab Selection Navigation Bar */}
-        <div className="flex space-x-1 bg-slate-200/60 p-1.5 rounded-2xl mb-6 max-w-lg border border-slate-200/80">
+        <div className="flex space-x-1 bg-slate-100/90 p-1.5 rounded-full mb-6 max-w-lg border border-slate-200/80 shadow-2xs">
           <button 
             onClick={() => setCurrentTab('resumen')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'resumen' 
-                ? 'bg-white text-slate-900 shadow-xs' 
+                ? 'bg-white text-blue-600 shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -808,9 +810,9 @@ export default function App() {
           </button>
           <button 
             onClick={() => setCurrentTab('deudas')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'deudas' 
-                ? 'bg-white text-slate-900 shadow-xs' 
+                ? 'bg-white text-blue-600 shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -818,9 +820,9 @@ export default function App() {
           </button>
           <button 
             onClick={() => setCurrentTab('movimientos')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'movimientos' 
-                ? 'bg-white text-slate-900 shadow-xs' 
+                ? 'bg-white text-blue-600 shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
@@ -828,9 +830,9 @@ export default function App() {
           </button>
           <button 
             onClick={() => setCurrentTab('config')}
-            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'config' 
-                ? 'bg-white text-slate-900 shadow-xs' 
+                ? 'bg-white text-blue-600 shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >

@@ -163,7 +163,7 @@ export default function DebtsList({
     <div className="space-y-4">
       
       {/* Filtering Header Toolbar */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-xs space-y-4">
+      <div className="gemini-card rounded-2xl p-4.5 shadow-xs space-y-4">
         
         {/* Row 1: Search & Base filters */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -178,7 +178,7 @@ export default function DebtsList({
               placeholder="Buscar por cliente, concepto o creador..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition bg-slate-50/50 focus:bg-white"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 transition bg-slate-50/60 focus:bg-white"
             />
           </div>
 
@@ -189,7 +189,7 @@ export default function DebtsList({
             <select 
               value={statusFilter}
               onChange={(e: any) => setStatusFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
+              className="w-full md:w-auto py-2.5 px-3.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Estados</option>
               <option value="pendiente">Solo Pendientes</option>
@@ -200,7 +200,7 @@ export default function DebtsList({
             <select 
               value={contactoFilter}
               onChange={(e) => setContactoFilter(e.target.value)}
-              className="w-full md:w-auto md:max-w-[180px] py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
+              className="w-full md:w-auto md:max-w-[180px] py-2.5 px-3.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Clientes</option>
               {uniqueContactos.map(name => (
@@ -212,7 +212,7 @@ export default function DebtsList({
             <select 
               value={mesFilter}
               onChange={(e) => setMesFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
+              className="w-full md:w-auto py-2.5 px-3.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Meses</option>
               {uniqueMeses.map(mes => (
@@ -224,7 +224,7 @@ export default function DebtsList({
             <button 
               onClick={handleExportCSV}
               disabled={filteredDeudas.length === 0}
-              className="w-full md:w-auto justify-center bg-slate-100 hover:bg-slate-200/80 disabled:opacity-50 text-slate-700 border border-slate-200/80 py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center space-x-2 cursor-pointer shrink-0"
+              className="w-full md:w-auto justify-center bg-slate-100 hover:bg-slate-200/80 disabled:opacity-50 text-slate-700 border border-slate-200/80 py-2.5 px-4 rounded-full font-bold text-xs transition flex items-center space-x-2 cursor-pointer shrink-0"
               title="Descargar listado actual filtrado en formato CSV compatible con Excel"
             >
               <Share2 className="h-4 w-4 text-slate-500" />
@@ -233,7 +233,7 @@ export default function DebtsList({
 
             <button 
               onClick={onOpenNewDebt}
-              className="w-full md:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-emerald-500/20 shrink-0 active:scale-95 duration-150"
+              className="w-full md:w-auto justify-center gemini-gradient-bg hover:opacity-95 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-full transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-blue-500/20 shrink-0 active:scale-95 duration-150"
             >
               <ClipboardList className="h-4 w-4" />
               <span>Registrar Préstamo</span>
@@ -242,7 +242,7 @@ export default function DebtsList({
         </div>
 
         {/* Row 2: Sub-metrics banner */}
-        <div id="sub-metrics-banner" className="bg-slate-50 border border-slate-200/60 text-slate-700 px-4 py-3 rounded-xl text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-medium">
+        <div id="sub-metrics-banner" className="bg-slate-50/80 border border-slate-200/60 text-slate-700 px-4 py-3 rounded-xl text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-medium">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-slate-400">Filtros activos:</span>
             <span className="font-bold text-slate-900">
@@ -259,7 +259,7 @@ export default function DebtsList({
                   setContactoFilter('todos');
                   setMesFilter('todos');
                 }}
-                className="text-[10px] text-indigo-600 hover:underline font-bold uppercase tracking-wider ml-1 px-2 py-0.5 bg-white border border-slate-200 rounded-md cursor-pointer shadow-2xs"
+                className="text-[10px] text-blue-600 hover:underline font-bold uppercase tracking-wider ml-1 px-2.5 py-0.5 bg-white border border-slate-200 rounded-full cursor-pointer shadow-2xs"
               >
                 Limpiar Filtros
               </button>

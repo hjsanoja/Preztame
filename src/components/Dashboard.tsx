@@ -270,13 +270,13 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
     };
   }, [viewDeudas]);
 
-  const PIE_COLORS = ['#50599c', '#70C145'];
+  const PIE_COLORS = ['#4285F4', '#9B51E0', '#E91E63'];
 
   return (
     <div className="space-y-6">
       
       {/* Dashboard Top Header & Action Row */}
-      <div id="dashboard-header-banner" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
+      <div id="dashboard-header-banner" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 gemini-card rounded-2xl p-5 shadow-xs">
         <div>
           <h2 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <span>Estadísticas Consolidadas</span>
@@ -287,7 +287,7 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
         </div>
         <button
           onClick={onOpenNewDebt}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4.5 py-3 rounded-xl transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-emerald-500/20 shrink-0 active:scale-95 duration-150"
+          className="gemini-gradient-bg hover:opacity-95 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-blue-500/20 shrink-0 active:scale-95 duration-150"
         >
           <span className="text-sm font-black leading-none">+</span>
           <span>Registrar Préstamo</span>
@@ -313,9 +313,9 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         
         {/* KPI 1 - Saldo por Cobrar */}
-        <div id="kpi-saldo-pendiente" className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200">
+        <div id="kpi-saldo-pendiente" className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200 gemini-glow-hover">
           <div className="flex items-center justify-between">
-            <div className="bg-rose-50 text-rose-600 p-2.5 rounded-xl border border-rose-100 shrink-0">
+            <div className="bg-rose-50 text-rose-600 p-2.5 rounded-2xl border border-rose-100 shrink-0">
               <AlertTriangle className="h-5 w-5 text-rose-600" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/80 font-mono">
@@ -339,16 +339,16 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
         </div>
 
         {/* KPI 2 - Cobros por Mes de Pago (Interactive Card) */}
-        <div id="kpi-cobros-mes-pago" className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200">
+        <div id="kpi-cobros-mes-pago" className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200 gemini-glow-hover">
           <div className="flex items-center justify-between">
-            <div className="bg-amber-50 text-amber-600 p-2.5 rounded-xl border border-amber-100 shrink-0">
+            <div className="bg-amber-50 text-amber-600 p-2.5 rounded-2xl border border-amber-100 shrink-0">
               <Clock className="h-5 w-5 text-amber-600" />
             </div>
             {/* Embedded Month Selector */}
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="text-[11px] font-bold font-mono text-indigo-900 bg-slate-100/90 hover:bg-slate-200/80 py-1 px-2.5 border border-slate-200 rounded-lg focus:outline-none cursor-pointer max-w-[130px] transition"
+              className="text-[11px] font-bold font-mono text-blue-900 bg-slate-100/90 hover:bg-slate-200/80 py-1 px-3 border border-slate-200 rounded-full focus:outline-none cursor-pointer max-w-[130px] transition"
               title="Filtrar cobros estimados por mes de pago"
             >
               {uniqueMonthsOfView.length > 0 ? (
@@ -377,18 +377,18 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
         </div>
 
         {/* KPI 3 - Total Prestado */}
-        <div id="kpi-total-prestado" className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200">
+        <div id="kpi-total-prestado" className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200 gemini-glow-hover">
           <div className="flex items-center justify-between">
-            <div className="bg-indigo-50 text-indigo-600 p-2.5 rounded-xl border border-indigo-100 shrink-0">
-              <TrendingUp className="h-5 w-5 text-indigo-600" />
+            <div className="bg-blue-50 text-blue-600 p-2.5 rounded-2xl border border-blue-100 shrink-0">
+              <TrendingUp className="h-5 w-5 text-blue-600" />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100/80 font-mono">
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100/80 font-mono">
               Historial
             </span>
           </div>
           <div className="min-w-0 mt-3 flex-1 flex flex-col justify-end">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">Histórico Prestado</p>
-            <h3 className="text-xl sm:text-2xl font-black text-indigo-950 tracking-tight mt-1 whitespace-nowrap overflow-x-auto pb-0.5 leading-none">
+            <h3 className="text-xl sm:text-2xl font-black text-blue-950 tracking-tight mt-1 whitespace-nowrap overflow-x-auto pb-0.5 leading-none">
               {formatValue(stats.totalPrestado)}
             </h3>
             {stats.prestadoConvertido !== stats.totalPrestado ? (
@@ -403,9 +403,9 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
         </div>
 
         {/* KPI 4 - Total Recuperado */}
-        <div id="kpi-total-recuperado" className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200">
+        <div id="kpi-total-recuperado" className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-sm flex flex-col justify-between min-h-[160px] transition-all duration-200 gemini-glow-hover">
           <div className="flex items-center justify-between">
-            <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-xl border border-emerald-100 shrink-0">
+            <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-2xl border border-emerald-100 shrink-0">
               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-mono">

@@ -149,15 +149,15 @@ export default function TransactionsHistory({
     <div className="space-y-6">
       
       {/* Header Info Banner */}
-      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 shadow-sm">
-        <h4 className="font-bold text-[#040d53] text-lg">Historial de Movimientos</h4>
+      <div className="gemini-card rounded-2xl p-5 shadow-xs">
+        <h4 className="font-bold text-slate-900 text-lg">Historial de Movimientos</h4>
         <p className="text-xs text-slate-500 mt-1">
           Auditoría de todos los desembolsos de capital y cobros realizados. Los cambios realizados se sincronizan en tiempo real.
         </p>
       </div>
 
       {/* Dynamic Filter & Search Toolbar */}
-      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="gemini-card rounded-2xl p-4 shadow-xs space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Text Search input */}
           <div className="relative flex-1">
@@ -167,7 +167,7 @@ export default function TransactionsHistory({
               placeholder="Buscar por cliente, nota o registrado por..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-[#e2e8f0] rounded-xl focus:outline-none focus:border-[#040d53] focus:ring-1 focus:ring-[#040d53]"
+              className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200/80 rounded-full focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition"
             />
           </div>
 
@@ -177,7 +177,7 @@ export default function TransactionsHistory({
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="text-xs font-bold font-mono text-[#040d53] bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 focus:outline-none cursor-pointer min-w-[150px]"
+              className="text-xs font-bold font-mono text-blue-900 bg-slate-50 border border-slate-200 rounded-full py-2 px-3.5 focus:outline-none cursor-pointer min-w-[150px]"
             >
               <option value="todos">Todos los Flujos</option>
               <option value="deuda">💸 Préstamos (Salidas)</option>
@@ -187,17 +187,17 @@ export default function TransactionsHistory({
         </div>
 
         {/* Audit mini totals badge */}
-        <div className="bg-[#f3f3f6] border border-[#eeeef0] rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-600 justify-between items-center">
+        <div className="bg-slate-50/80 border border-slate-200/60 rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-600 justify-between items-center">
           <div className="flex flex-wrap gap-x-6 gap-y-1">
-            <span>Capital Prestado: <strong className="text-[#ba1a1a] font-bold font-mono">{formatValue(auditTotals.prestado)}</strong></span>
-            <span>Capital Recuperado: <strong className="text-[#2a6c00] font-bold font-mono">{formatValue(auditTotals.cobrado)}</strong></span>
-            <span>Balance de Caja: <strong className={`font-mono font-bold ${auditTotals.neto >= 0 ? 'text-[#2a6c00]' : 'text-[#ba1a1a]'}`}>{auditTotals.neto >= 0 ? '+' : ''}{formatValue(auditTotals.neto)}</strong></span>
+            <span>Capital Prestado: <strong className="text-rose-600 font-bold font-mono">{formatValue(auditTotals.prestado)}</strong></span>
+            <span>Capital Recuperado: <strong className="text-emerald-600 font-bold font-mono">{formatValue(auditTotals.cobrado)}</strong></span>
+            <span>Balance de Caja: <strong className={`font-mono font-bold ${auditTotals.neto >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{auditTotals.neto >= 0 ? '+' : ''}{formatValue(auditTotals.neto)}</strong></span>
           </div>
 
           {(search !== '' || typeFilter !== 'todos') && (
             <button 
               onClick={() => { setSearch(''); setTypeFilter('todos'); }}
-              className="text-[10px] text-[#040d53] hover:underline font-extrabold uppercase tracking-wider bg-white border border-slate-200 px-2 py-0.5 rounded shadow-2xs"
+              className="text-[10px] text-blue-600 hover:underline font-extrabold uppercase tracking-wider bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-2xs"
             >
               Limpiar búsqueda
             </button>
