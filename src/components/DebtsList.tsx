@@ -21,7 +21,7 @@ export default function DebtsList({
 
   // Local filters state
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendiente' | 'saldado'>('todos');
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendiente' | 'saldado'>('pendiente');
   const [contactoFilter, setContactoFilter] = useState('todos');
   const [mesFilter, setMesFilter] = useState('todos');
   const [sortBy, setSortBy] = useState<'fecha' | 'monto' | 'saldo'>('fecha');
@@ -50,16 +50,31 @@ export default function DebtsList({
     return accountView === 'Ambos' ? deudas : deudas.filter(d => d.cuenta === accountView);
   }, [deudas, accountView]);
 
-  // Derived filter options based on viewDeudas
+  // Derived filter options based on viewDeudas & statusFilter (cascading list of active contacts)
   const uniqueContactos = useMemo(() => {
-    const list = [...new Set(viewDeudas.map(d => d.contacto))].sort();
+    let baseList = viewDeudas;
+    if (statusFilter !== 'todos') {
+      baseList = baseList.filter(d => d.estado === statusFilter);
+    }
+    const list = [...new Set(baseList.map(d => d.contacto))].sort();
     return list;
-  }, [viewDeudas]);
+  }, [viewDeudas, statusFilter]);
+
+  // Auto-reset contact filter if the selected contact is no longer in the filtered list
+  React.useEffect(() => {
+    if (contactoFilter !== 'todos' && !uniqueContactos.includes(contactoFilter)) {
+      setContactoFilter('todos');
+    }
+  }, [uniqueContactos, contactoFilter]);
 
   const uniqueMeses = useMemo(() => {
-    const list = [...new Set(viewDeudas.map(d => d.mesPago))].filter(Boolean).sort();
+    let baseList = viewDeudas;
+    if (statusFilter !== 'todos') {
+      baseList = baseList.filter(d => d.estado === statusFilter);
+    }
+    const list = [...new Set(baseList.map(d => d.mesPago))].filter(Boolean).sort();
     return list;
-  }, [viewDeudas]);
+  }, [viewDeudas, statusFilter]);
 
   // Apply all search & filters together
   const filteredDeudas = useMemo(() => {
@@ -255,7 +270,7 @@ export default function DebtsList({
               <button 
                 onClick={() => {
                   setSearch('');
-                  setStatusFilter('todos');
+                  setStatusFilter('pendiente');
                   setContactoFilter('todos');
                   setMesFilter('todos');
                 }}
