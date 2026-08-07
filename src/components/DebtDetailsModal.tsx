@@ -63,18 +63,18 @@ export default function DebtDetailsModal({
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
       <div 
-        className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] transform scale-100 transition-all duration-200"
+        className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200/80 flex flex-col max-h-[90vh] transform scale-100 transition-all duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* Modal Header */}
-        <div className="flex justify-between items-center pb-3.5 border-b border-slate-100 shrink-0">
+        <div className="flex justify-between items-center pb-4 border-b border-slate-100 shrink-0">
           <div>
-            <h3 className="font-bold text-[#040d53] text-[17px] flex items-center">
+            <h3 className="font-extrabold text-slate-900 text-lg flex items-center">
               Ficha del Préstamo Activo
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Cliente: <strong className="text-slate-800 font-extrabold">{debt.contacto}</strong> | Asignado a: <span className="font-bold text-[#040d53]">{debt.cuenta}</span>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Cliente: <strong className="text-slate-900 font-bold">{debt.contacto}</strong> | Asignado a: <span className="font-bold text-indigo-600 font-mono">{debt.cuenta}</span>
             </p>
           </div>
           <button 
@@ -89,37 +89,37 @@ export default function DebtDetailsModal({
         <div className="overflow-y-auto py-5 flex-grow space-y-6 scrollbar-thin">
           
           {/* Quick Metrics display */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-[#f3f3f6] p-4 rounded-xl border border-[#eeeef0]">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/80">
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400">Monto Original</span>
-              <span className="text-base font-bold text-[#040d53]">{formatValue(debt.monto)}</span>
+              <span className="text-base font-bold text-slate-900 font-mono">{formatValue(debt.monto)}</span>
             </div>
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400">Saldo Exigible</span>
-              <span className={`text-base font-extrabold ${debt.saldo > 0 ? 'text-[#ba1a1a]' : 'text-slate-500'}`}>
+              <span className={`text-base font-black font-mono ${debt.saldo > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
                 {formatValue(debt.saldo)}
               </span>
             </div>
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400 font-sans">Mes de Pago</span>
-              <span className="text-sm font-semibold text-slate-700">{formatMonthName(debt.mesPago)}</span>
+              <span className="text-sm font-semibold text-slate-800">{formatMonthName(debt.mesPago)}</span>
             </div>
             <div>
               <span className="block text-[10px] uppercase font-bold text-slate-400 font-mono">Tasa de Cambio</span>
-              <span className="text-sm font-semibold font-mono text-slate-700">{displayTasa.toFixed(4)}</span>
+              <span className="text-sm font-semibold font-mono text-slate-800">{displayTasa.toFixed(2)}</span>
             </div>
           </div>
 
           {/* Rate Conversions display panel */}
           {isConverted && (
-            <div className="bg-[#a0f572]/10 border border-[#a0f572]/40 rounded-xl p-3.5 text-xs text-slate-700 flex flex-col sm:flex-row justify-between gap-2.5 font-medium">
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 text-xs text-slate-700 flex flex-col sm:flex-row justify-between gap-2.5 font-medium">
               <div>
-                <span className="font-bold text-[#2a6c00] uppercase text-[10px] block mb-0.5">Conversiones con Tasa {displayTasa.toFixed(4)}</span>
+                <span className="font-bold text-emerald-800 uppercase text-[10px] block mb-0.5 font-mono">Conversiones con Tasa {displayTasa.toFixed(2)}</span>
                 Valor convertido a moneda secundaria (VES / Bolívares):
               </div>
               <div className="flex space-x-4">
-                <span>Original: <strong className="text-slate-900 font-bold">{formatVES(debt.monto * displayTasa)}</strong></span>
-                <span>Pendiente: <strong className="text-[#ba1a1a] font-extrabold">{formatVES(debt.saldo * displayTasa)}</strong></span>
+                <span>Original: <strong className="text-slate-900 font-bold font-mono">{formatVES(debt.monto * displayTasa)}</strong></span>
+                <span>Pendiente: <strong className="text-rose-600 font-black font-mono">{formatVES(debt.saldo * displayTasa)}</strong></span>
               </div>
             </div>
           )}
@@ -127,7 +127,7 @@ export default function DebtDetailsModal({
           {/* Extended description card */}
           <div className="space-y-2">
             <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Concepto de la operación</span>
-            <div className="text-xs text-slate-600 bg-slate-50/50 p-4 rounded-xl border border-slate-100 flex items-start space-x-2">
+            <div className="text-xs text-slate-600 bg-slate-50/50 p-4 rounded-xl border border-slate-200/80 flex items-start space-x-2">
               <FileText className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
               <div className="leading-relaxed">
                 <p className="font-medium text-slate-700">{debt.descripcion || "Sin descripción / anotado como préstamo directo."}</p>
@@ -146,7 +146,7 @@ export default function DebtDetailsModal({
               {debt.estado === 'pendiente' && (
                 <button
                   onClick={() => onOpenAbono(debt.id)}
-                  className="bg-[#2a6c00] hover:opacity-95 text-white font-bold text-xs px-3 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-sm shadow-emerald-50"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-sm shadow-emerald-500/20 active:scale-95 duration-150"
                 >
                   <ArrowDownLeft className="h-4 w-4" />
                   <span>Abonar Capital</span>
@@ -154,9 +154,9 @@ export default function DebtDetailsModal({
               )}
             </div>
 
-            <div className="border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+            <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs">
               <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                <thead className="bg-[#f3f3f6] border-b border-slate-150 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <thead className="bg-slate-50 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider font-mono">
                   <tr>
                     <th className="py-2.5 px-4">Fecha Pago</th>
                     <th className="py-2.5 px-4">Monto Recibido</th>
@@ -168,17 +168,17 @@ export default function DebtDetailsModal({
                 <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
                   {assocPayments.length > 0 ? (
                     assocPayments.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-50 transition duration-150">
+                      <tr key={p.id} className="hover:bg-slate-50/60 transition duration-150">
                         <td className="py-2.5 px-4 font-mono text-slate-500">
                           {formatDateLabel(p.fecha)}
                         </td>
-                        <td className="py-2.5 px-4 font-bold text-[#2a6c00]">
+                        <td className="py-2.5 px-4 font-bold text-emerald-600 font-mono">
                           + {formatValue(p.monto)}
                         </td>
                         <td className="py-2.5 px-4 text-slate-500 max-w-[150px] truncate" title={p.nota}>
                           {p.nota || '-'}
                         </td>
-                        <td className="py-2.5 px-4 text-slate-500 font-semibold">
+                        <td className="py-2.5 px-4 text-slate-600 font-semibold">
                           {p.registradoPor}
                         </td>
                         <td className="py-2.5 px-4 text-right">
@@ -194,7 +194,7 @@ export default function DebtDetailsModal({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="py-5 text-center text-slate-400 font-semibold text-xs">
+                      <td colSpan={5} className="py-5 text-center text-slate-400 font-medium text-xs">
                         No hay abonos registrados para este préstamo.
                       </td>
                     </tr>
@@ -210,7 +210,7 @@ export default function DebtDetailsModal({
         <div className="pt-3.5 border-t border-slate-100 flex justify-end shrink-0">
           <button 
             onClick={onClose}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-bold rounded-xl transition active:scale-95 cursor-pointer"
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs sm:text-sm font-bold rounded-xl transition active:scale-95 cursor-pointer"
           >
             Cerrar Ficha
           </button>

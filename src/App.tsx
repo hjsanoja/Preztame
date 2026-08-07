@@ -639,75 +639,82 @@ export default function App() {
   };
 
   return (
-    <div className="bg-[#f9f9fc] text-[#1a1c1e] min-h-screen flex flex-col font-sans selection:bg-[#040d53]/15 selection:text-[#040d53] pb-12 antialiased">
+    <div className="bg-slate-50/80 text-slate-900 min-h-screen flex flex-col font-sans selection:bg-indigo-500/15 selection:text-indigo-600 pb-16 antialiased">
       
       {/* Toast notifications drawer block */}
-      <div className="fixed top-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 max-w-xs sm:max-w-sm pointer-events-none">
+      <div className="fixed top-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-xs sm:max-w-sm pointer-events-none">
         {toasts.map(t => {
-          let styleClass = "bg-slate-900 text-white border-slate-800";
-          if (t.type === 'success') styleClass = "bg-[#2a6c00]/95 border-emerald-500/20 text-white";
-          if (t.type === 'error') styleClass = "bg-[#ba1a1a]/95 border-red-500/20 text-white";
-          if (t.type === 'warning') styleClass = "bg-amber-500/95 border-amber-600/20 text-slate-950";
-          if (t.type === 'info') styleClass = "bg-[#040d53]/95 border-indigo-500/20 text-white";
+          let styleClass = "bg-slate-900 text-white border-slate-800 shadow-xl";
+          if (t.type === 'success') styleClass = "bg-emerald-900/95 border-emerald-500/30 text-emerald-100 shadow-xl shadow-emerald-950/20";
+          if (t.type === 'error') styleClass = "bg-rose-900/95 border-rose-500/30 text-rose-100 shadow-xl shadow-rose-950/20";
+          if (t.type === 'warning') styleClass = "bg-amber-950/95 border-amber-500/30 text-amber-200 shadow-xl shadow-amber-950/20";
+          if (t.type === 'info') styleClass = "bg-slate-900/95 border-indigo-500/30 text-indigo-100 shadow-xl shadow-slate-950/20";
 
           return (
             <div 
               key={t.id}
-              className={`flex items-center space-x-2 px-3.5 py-2.5 rounded-lg border shadow-md text-[11px] font-bold leading-normal transition-all duration-300 pointer-events-auto shrink-0 animate-fade-in ${styleClass}`}
+              className={`flex items-center space-x-2.5 px-4 py-3 rounded-2xl border backdrop-blur-md text-xs font-semibold leading-normal transition-all duration-300 pointer-events-auto shrink-0 animate-fade-in ${styleClass}`}
             >
+              <Sparkles className="h-4 w-4 shrink-0 text-indigo-400" />
               <span>{t.message}</span>
             </div>
           );
         })}
       </div>
 
-      {/* Main Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs backdrop-blur-md bg-white/95">
+      {/* Main Header with Google Gemini / Stitch Aesthetic */}
+      <header className="bg-white/85 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
-          <div className="flex flex-col sm:flex-row justify-between sm:h-16 items-start sm:items-center py-3.5 sm:py-0 gap-3">
+          <div className="flex flex-col sm:flex-row justify-between sm:h-18 items-start sm:items-center py-3.5 sm:py-0 gap-3">
             
-            {/* Logo and metadata branding */}
-            <div className="flex items-center space-x-3">
-              <div className="bg-[#040d53] text-white p-2.5 rounded-xl shadow-md transform hover:scale-105 transition duration-200 flex items-center justify-center">
+            {/* Logo and branding mark */}
+            <div className="flex items-center space-x-3.5">
+              <div className="gemini-gradient-bg text-white p-2.5 rounded-2xl shadow-md shadow-indigo-500/20 transform hover:scale-105 transition duration-200 flex items-center justify-center">
                 <ArrowRightLeft className="h-5 w-5 stroke-[2.2]" />
               </div>
               <div>
-                <h1 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center">
-                  DeudaFlow
-                  <span className="text-[#040d53] font-bold text-[9px] sm:text-[10px] bg-indigo-50 px-1.5 sm:px-2 py-0.5 rounded-md ml-2 border border-indigo-100 font-mono">Nina & Nando</span>
+                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>DeudaFlow</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100/80 font-mono">
+                    <Sparkles className="h-2.5 w-2.5 text-indigo-500" />
+                    Nina & Nando
+                  </span>
                 </h1>
-                <p className="text-[10px] sm:text-[11px] text-slate-450 font-bold tracking-tight">Finanzas compartidas transparentes</p>
+                <p className="text-[11px] text-slate-500 font-medium tracking-tight">Control de finanzas compartidas y préstamos</p>
               </div>
             </div>
 
-            {/* Config & Active operator block */}
+            {/* Config & Active operator user block */}
             <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
               
-              {/* Active logging user toggle */}
-              <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-xl border border-[#eeeef0]">
+              {/* Operator Badge Switcher */}
+              <div className="flex items-center space-x-1 bg-slate-100/80 p-1 rounded-2xl border border-slate-200/60">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 font-mono hidden md:inline">Operando:</span>
                 <button 
                   onClick={() => handleUserToggle('Nina')}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 active:scale-95 ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
                     activeUser === 'Nina' 
-                      ? 'bg-[#040d53] text-white shadow-xs font-extrabold' 
-                      : 'text-slate-600 hover:text-[#1a1c1e] hover:bg-white/50'
+                      ? 'bg-slate-900 text-white shadow-xs font-bold' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
+                  <span className="w-2 h-2 rounded-full bg-indigo-400" />
                   Nina
                 </button>
                 <button 
                   onClick={() => handleUserToggle('Nando')}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-200 active:scale-95 ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
                     activeUser === 'Nando' 
-                      ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold' 
-                      : 'text-slate-600 hover:text-[#1a1c1e] hover:bg-white/50'
+                      ? 'bg-amber-500 text-slate-950 shadow-xs font-bold' 
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                   }`}
                 >
+                  <span className="w-2 h-2 rounded-full bg-amber-950" />
                   Nando
                 </button>
               </div>
 
-              {/* Central sync cloud beacon indicator */}
+              {/* Drive sync status beacon */}
               <div 
                 onClick={() => {
                   if (syncStatus === 'error') {
@@ -715,25 +722,25 @@ export default function App() {
                     showToast("Abriendo guía de configuración paso a paso.", "info");
                   }
                 }}
-                className={`flex items-center space-x-1.5 border px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold select-none ${
-                  syncStatus === 'synced' ? 'bg-emerald-50 border-emerald-250 text-[#2c7100]' :
-                  syncStatus === 'pending' ? 'bg-indigo-50 border-indigo-150 text-[#040d53]' :
-                  syncStatus === 'error' ? 'bg-rose-50 border-rose-250 text-[#ba1a1a] cursor-pointer hover:bg-rose-100' :
-                  'bg-[#f3f3f6] border-[#eeeef0] text-slate-700'
+                className={`flex items-center space-x-2 border px-3 py-1.5 rounded-full text-xs font-semibold select-none transition ${
+                  syncStatus === 'synced' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' :
+                  syncStatus === 'pending' ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900' :
+                  syncStatus === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800 cursor-pointer hover:bg-rose-100' :
+                  'bg-slate-100 border-slate-200 text-slate-700'
                 }`}
                 title={syncTooltipMsg()}
               >
-                <span className={`h-1.5 sm:h-2 w-1.5 sm:w-2 rounded-full ${
-                  syncStatus === 'synced' ? 'bg-[#70C145]' :
+                <span className={`h-2 w-2 rounded-full ${
+                  syncStatus === 'synced' ? 'bg-emerald-500 shadow-xs' :
                   syncStatus === 'pending' ? 'bg-indigo-500 animate-pulse' :
-                  syncStatus === 'error' ? 'bg-[#ba1a1a] animate-ping' :
+                  syncStatus === 'error' ? 'bg-rose-600 animate-ping' :
                   'bg-slate-400'
                 }`} />
                 <span className="font-sans font-bold">
                   {syncStatus === 'synced' ? 'Sincronizado' :
-                   syncStatus === 'pending' ? 'Guardando...' :
-                   syncStatus === 'error' ? 'Error ⚠️' :
-                   'Pruebas'}
+                   syncStatus === 'pending' ? 'Sincronizando...' :
+                   syncStatus === 'error' ? 'Error Sync ⚠️' :
+                   'Pruebas Local'}
                 </span>
               </div>
 
@@ -747,104 +754,100 @@ export default function App() {
       <main className="max-w-[1280px] mx-auto px-4 sm:px-8 w-full mt-6 flex-grow">
         
         {/* Global Account Select View */}
-        <div id="account-view-filter-bar" className="bg-white border border-[#e2e8f0] rounded-2xl p-4 sm:p-4.5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
+        <div id="account-view-filter-bar" className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Panel selector de vistas</span>
-            <span className="text-xs sm:text-sm font-semibold text-slate-700">Filtrar métricas, listas e historial consolidado de:</span>
+            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest block font-mono mb-0.5">Visor Consolidado</span>
+            <span className="text-xs sm:text-sm font-semibold text-slate-700">Filtrar registros e historial por cuenta:</span>
           </div>
           
-          <div className="flex bg-[#f3f3f6] p-1 rounded-xl self-start sm:self-center border border-[#eeeef0] w-full sm:w-auto">
+          <div className="flex bg-slate-100/80 p-1 rounded-xl self-start sm:self-center border border-slate-200/60 w-full sm:w-auto">
             <button 
               onClick={() => handleAccountViewToggle('Ambos')}
-              className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-150 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Ambos' 
-                  ? 'bg-white text-slate-900 shadow-xs font-extrabold'
+                  ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <span className="hidden xs:inline">Ambas Cuentas</span>
-              <span className="inline xs:hidden">Ambas</span>
+              Ambas Cuentas
             </button>
             <button 
               onClick={() => handleAccountViewToggle('Nina')}
-              className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-150 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Nina' 
-                  ? 'bg-[#040d53] text-white shadow-xs font-extrabold'
-                  : 'text-slate-500 hover:text-slate-950'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <span className="hidden xs:inline">Préstamos Nina</span>
-              <span className="inline xs:hidden">Nina</span>
+              Cuenta Nina
             </button>
             <button 
               onClick={() => handleAccountViewToggle('Nando')}
-              className={`flex-1 sm:flex-initial px-3 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold transition-all duration-150 active:scale-95 ${
+              className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 active:scale-95 ${
                 accountView === 'Nando' 
-                  ? 'bg-amber-500 text-slate-950 shadow-xs font-extrabold'
-                  : 'text-slate-500 hover:text-slate-950'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <span className="hidden xs:inline">Préstamos Nando</span>
-              <span className="inline xs:hidden">Nando</span>
+              Cuenta Nando
             </button>
           </div>
         </div>
 
-        {/* Tab Selection Bar */}
-        <div className="flex space-x-0.5 sm:space-x-1 bg-slate-200/50 p-1 rounded-xl mb-6 max-w-lg border border-[#e2e8f0]">
+        {/* Tab Selection Navigation Bar */}
+        <div className="flex space-x-1 bg-slate-200/60 p-1.5 rounded-2xl mb-6 max-w-lg border border-slate-200/80">
           <button 
             onClick={() => setCurrentTab('resumen')}
-            className={`flex-1 py-2 sm:py-2.5 px-1.5 sm:px-3 text-[11px] xs:text-xs sm:text-sm font-semibold rounded-lg transition active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'resumen' 
-                ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                : 'text-slate-500 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Dashboard
           </button>
           <button 
             onClick={() => setCurrentTab('deudas')}
-            className={`flex-1 py-2 sm:py-2.5 px-1.5 sm:px-3 text-[11px] xs:text-xs sm:text-sm font-semibold rounded-lg transition active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'deudas' 
-                ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                : 'text-slate-500 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Préstamos
           </button>
           <button 
             onClick={() => setCurrentTab('movimientos')}
-            className={`flex-1 py-2 sm:py-2.5 px-1.5 sm:px-3 text-[11px] xs:text-xs sm:text-sm font-semibold rounded-lg transition active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'movimientos' 
-                ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                : 'text-slate-500 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Historial
           </button>
           <button 
             onClick={() => setCurrentTab('config')}
-            className={`flex-1 py-2 sm:py-2.5 px-1.5 sm:px-3 text-[11px] xs:text-xs sm:text-sm font-semibold rounded-lg transition active:scale-95 cursor-pointer ${
+            className={`flex-1 py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all duration-200 active:scale-95 cursor-pointer ${
               currentTab === 'config' 
-                ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                : 'text-slate-500 hover:text-slate-900'
+                ? 'bg-white text-slate-900 shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <span className="hidden xs:inline">Google Sheets</span>
-            <span className="inline xs:hidden">Sheets</span>
+            Configuración
           </button>
         </div>
 
         {/* Hotkey Shortcuts overlay hint */}
-        <div className="hidden md:flex justify-between items-center text-[11px] text-slate-400 bg-[#f3f3f6] border border-[#eeeef0] px-4 py-2 rounded-xl mb-6 font-medium">
-          <span className="flex items-center">
-            <Keyboard className="h-3.5 w-3.5 mr-1 text-[#040d53]" />
-            ⚡ Atajos de teclado rápidos activos:
+        <div className="hidden md:flex justify-between items-center text-[11px] text-slate-500 bg-white border border-slate-200/70 px-4 py-2.5 rounded-2xl mb-6 font-medium shadow-2xs">
+          <span className="flex items-center gap-1.5 font-bold text-slate-700">
+            <Keyboard className="h-4 w-4 text-indigo-600" />
+            Atajos de teclado:
           </span>
-          <div className="flex space-x-4">
-            <span><kbd className="bg-white border border-slate-300 px-1.5 py-0.5 rounded shadow-xs text-slate-600 font-bold font-mono">N</kbd> Registrar Préstamo</span>
-            <span><kbd className="bg-white border border-slate-300 px-1.5 py-0.5 rounded shadow-xs text-slate-600 font-bold font-mono">1 - 4</kbd> Intercambiar pestaña</span>
-            <span><kbd className="bg-white border border-slate-300 px-1.5 py-0.5 rounded shadow-xs text-slate-600 font-bold font-mono">Esc</kbd> Cerrar todo</span>
+          <div className="flex space-x-5">
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">N</kbd> Nuevo Préstamo</span>
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">1 - 4</kbd> Cambiar Pestañas</span>
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">Esc</kbd> Cerrar Ventanas</span>
           </div>
         </div>
 

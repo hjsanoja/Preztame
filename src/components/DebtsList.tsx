@@ -163,22 +163,22 @@ export default function DebtsList({
     <div className="space-y-4">
       
       {/* Filtering Header Toolbar */}
-      <div className="bg-white border border-[#e2e8f0] rounded-2xl p-4 shadow-sm space-y-4">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 shadow-xs space-y-4">
         
         {/* Row 1: Search & Base filters */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           
           {/* Fuzzy Search Bar */}
           <div className="relative w-full lg:max-w-md flex-grow">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
-              <Search className="h-5 w-5 stroke-[1.8]" />
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">
+              <Search className="h-4.5 w-4.5 stroke-[2]" />
             </span>
             <input 
               type="text" 
               placeholder="Buscar por cliente, concepto o creador..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-[#e2e8f0] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] transition"
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition bg-slate-50/50 focus:bg-white"
             />
           </div>
 
@@ -189,7 +189,7 @@ export default function DebtsList({
             <select 
               value={statusFilter}
               onChange={(e: any) => setStatusFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-3 border border-[#e2e8f0] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] bg-white font-medium text-slate-700 cursor-pointer"
+              className="w-full md:w-auto py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Estados</option>
               <option value="pendiente">Solo Pendientes</option>
@@ -200,7 +200,7 @@ export default function DebtsList({
             <select 
               value={contactoFilter}
               onChange={(e) => setContactoFilter(e.target.value)}
-              className="w-full md:w-auto md:max-w-[180px] py-2.5 px-3 border border-[#e2e8f0] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] bg-white font-medium text-slate-700 cursor-pointer"
+              className="w-full md:w-auto md:max-w-[180px] py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Clientes</option>
               {uniqueContactos.map(name => (
@@ -212,7 +212,7 @@ export default function DebtsList({
             <select 
               value={mesFilter}
               onChange={(e) => setMesFilter(e.target.value)}
-              className="w-full md:w-auto py-2.5 px-3 border border-[#e2e8f0] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] bg-white font-medium text-slate-700 cursor-pointer"
+              className="w-full md:w-auto py-2.5 px-3 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 bg-white font-semibold text-slate-700 cursor-pointer"
             >
               <option value="todos">Todos los Meses</option>
               {uniqueMeses.map(mes => (
@@ -224,16 +224,16 @@ export default function DebtsList({
             <button 
               onClick={handleExportCSV}
               disabled={filteredDeudas.length === 0}
-              className="w-full md:w-auto justify-center bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 border border-slate-250 py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center space-x-2 cursor-pointer"
+              className="w-full md:w-auto justify-center bg-slate-100 hover:bg-slate-200/80 disabled:opacity-50 text-slate-700 border border-slate-200/80 py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center space-x-2 cursor-pointer shrink-0"
               title="Descargar listado actual filtrado en formato CSV compatible con Excel"
             >
-              <Share2 className="h-4 w-4" />
+              <Share2 className="h-4 w-4 text-slate-500" />
               <span>Exportar Excel</span>
             </button>
 
             <button 
               onClick={onOpenNewDebt}
-              className="w-full md:w-auto justify-center bg-[#2a6c00] hover:opacity-90 tracking-tight text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-emerald-100 active:scale-95 duration-100"
+              className="w-full md:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition flex items-center space-x-2 cursor-pointer shadow-sm shadow-emerald-500/20 shrink-0 active:scale-95 duration-150"
             >
               <ClipboardList className="h-4 w-4" />
               <span>Registrar Préstamo</span>
@@ -242,10 +242,10 @@ export default function DebtsList({
         </div>
 
         {/* Row 2: Sub-metrics banner */}
-        <div id="sub-metrics-banner" className="bg-[#f3f3f6] border border-[#eeeef0] text-slate-700 px-4 py-3 rounded-xl text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-medium">
+        <div id="sub-metrics-banner" className="bg-slate-50 border border-slate-200/60 text-slate-700 px-4 py-3 rounded-xl text-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-medium">
           <div className="flex flex-wrap items-center gap-2">
-            <span>Filtros aplicados:</span>
-            <span className="font-extrabold text-[#040d53]">
+            <span className="text-slate-400">Filtros activos:</span>
+            <span className="font-bold text-slate-900">
               {statusFilter !== 'todos' ? `Estado: ${statusFilter === 'pendiente' ? 'Pendiente' : 'Saldado'}` : 'Todos'} 
               {contactoFilter !== 'todos' && ` | Cliente: ${contactoFilter}`}
               {mesFilter !== 'todos' && ` | Vence: ${formatMonthName(mesFilter)}`}
@@ -259,16 +259,16 @@ export default function DebtsList({
                   setContactoFilter('todos');
                   setMesFilter('todos');
                 }}
-                className="text-[10px] text-[#040d53] hover:underline font-extrabold uppercase tracking-wider ml-1 px-1.5 py-0.5 bg-white border border-slate-200 rounded cursor-pointer"
+                className="text-[10px] text-indigo-600 hover:underline font-bold uppercase tracking-wider ml-1 px-2 py-0.5 bg-white border border-slate-200 rounded-md cursor-pointer shadow-2xs"
               >
                 Limpiar Filtros
               </button>
             )}
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
-            <span>Préstamos Totales: <strong className="text-[#040d53] text-[13px] font-extrabold">{formatValue(totals.original)}</strong></span>
-            <span>Monto Cobrado: <strong className="text-[#2a6c00] text-[13px] font-extrabold">{formatValue(totals.cobrado)}</strong></span>
-            <span>Saldo Exigible: <strong className="text-[#ba1a1a] text-[13px] font-extrabold">{formatValue(totals.pendiente)}</strong></span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+            <span>Préstamos Totales: <strong className="text-slate-900 text-xs font-bold font-mono">{formatValue(totals.original)}</strong></span>
+            <span>Monto Cobrado: <strong className="text-emerald-600 text-xs font-bold font-mono">{formatValue(totals.cobrado)}</strong></span>
+            <span>Saldo Exigible: <strong className="text-rose-600 text-xs font-bold font-mono">{formatValue(totals.pendiente)}</strong></span>
           </div>
         </div>
       </div>
@@ -298,15 +298,15 @@ export default function DebtsList({
               <div 
                 key={d.id}
                 id={`mobile-card-${d.id}`}
-                className="bg-white border border-[#e2e8f0] rounded-2xl p-4 shadow-sm relative overflow-hidden transition hover:border-[#040d53]/30"
+                className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs relative overflow-hidden transition hover:border-slate-300"
               >
                 {/* Visual Accent Bar */}
-                <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isPending ? 'bg-[#ba1a1a]' : 'bg-[#70C145]'}`} />
+                <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isPending ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                 
                 {/* Header info */}
                 <div className="pl-2 flex items-start justify-between mb-2">
                   <div>
-                    <h5 className="font-extrabold text-slate-900 text-sm tracking-tight flex items-center space-x-1">
+                    <h5 className="font-extrabold text-slate-900 text-sm tracking-tight flex items-center space-x-1.5">
                       <span>{d.contacto}</span>
                       <span className="text-[10px] text-slate-400 font-mono font-normal">#{d.id.slice(0, 5)}</span>
                     </h5>
@@ -317,21 +317,21 @@ export default function DebtsList({
 
                   <div className="flex flex-col items-end space-y-1">
                     {d.cuenta === 'Nina' ? (
-                      <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-[#dfe0ff] text-[#071155] border border-indigo-100 font-mono">
+                      <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-slate-900 text-white font-mono">
                         Nina
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 text-[9px] font-black rounded-full bg-[#a3f875]/25 text-[#1e5200] border border-[#a3f875]/40 font-mono">
+                      <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-500 text-white font-mono">
                         Nando
                       </span>
                     )}
 
                     {isPending ? (
-                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#ba1a1a] bg-rose-50 px-1.5 py-0.5 rounded-sm border border-rose-100 animate-pulse-subtle">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/80 font-mono">
                         Pendiente
                       </span>
                     ) : (
-                      <span className="text-[9px] font-extrabold uppercase tracking-widest text-[#2c7100] bg-emerald-50 px-1.5 py-0.5 rounded-sm border border-[#a0f572]/40">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80 font-mono">
                         Saldado
                       </span>
                     )}
@@ -339,7 +339,7 @@ export default function DebtsList({
                 </div>
 
                 {/* Amount grid */}
-                <div className="pl-2 grid grid-cols-2 gap-3 my-3 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                <div className="pl-2 grid grid-cols-2 gap-3 my-3 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Original</span>
                     <p className="text-xs font-bold text-slate-700 font-mono mt-0.5">{formatValue(d.monto)}</p>
@@ -351,7 +351,7 @@ export default function DebtsList({
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Exigible</span>
-                    <p className={`text-xs font-black font-mono mt-0.5 ${isPending ? 'text-[#ba1a1a]' : 'text-slate-500'}`}>
+                    <p className={`text-xs font-black font-mono mt-0.5 ${isPending ? 'text-rose-600' : 'text-slate-500'}`}>
                       {formatValue(d.saldo)}
                     </p>
                     {isConverted && d.saldo > 0 && (
@@ -365,12 +365,12 @@ export default function DebtsList({
                 {/* Progress bar if partially paid */}
                 {isPending && cobradoPercent > 0 && (
                   <div className="pl-2 mb-3">
-                    <div className="flex justify-between items-center text-[10px] text-slate-450 font-semibold mb-1">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold mb-1">
                       <span>Capital Abonado</span>
-                      <span className="text-[#2a6c00] font-bold">{cobradoPercent}% cobrado</span>
+                      <span className="text-emerald-600 font-bold">{cobradoPercent}% cobrado</span>
                     </div>
-                    <div className="w-full bg-slate-150 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-[#70C145] h-full" style={{ width: `${cobradoPercent}%` }} />
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-emerald-500 h-full" style={{ width: `${cobradoPercent}%` }} />
                     </div>
                   </div>
                 )}
@@ -379,7 +379,7 @@ export default function DebtsList({
                 <div className="pl-2 flex items-center justify-between text-[10px] text-slate-500 font-medium my-2.5">
                   <div className="flex items-center space-x-1">
                     <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span>Pago: <strong className="text-[#040d53] font-bold">{formatMonthName(d.mesPago)}</strong></span>
+                    <span>Pago: <strong className="text-slate-900 font-bold">{formatMonthName(d.mesPago)}</strong></span>
                   </div>
                   <div className="text-slate-400 font-mono">
                     Tasa: {displayTasa.toFixed(2)} | Reg: {formatDateLabel(d.fecha)}
@@ -390,7 +390,7 @@ export default function DebtsList({
                 <div className="pl-2 pt-2.5 border-t border-slate-100 flex items-center gap-2">
                   <button 
                     onClick={() => onOpenDetails(d.id)}
-                    className="flex-1 py-2 px-3 bg-[#040d53] hover:bg-[#1d2667] text-white font-bold rounded-lg text-xs flex items-center justify-center space-x-1.5 transition shadow-xs active:scale-95 cursor-pointer"
+                    className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 transition shadow-xs active:scale-95 cursor-pointer"
                   >
                     <Eye className="h-3.5 w-3.5" />
                     <span>Abonar / Detalles</span>
@@ -398,7 +398,7 @@ export default function DebtsList({
 
                   <button 
                     onClick={handleShare}
-                    className="p-2 text-slate-500 hover:text-[#2a6c00] hover:bg-emerald-50 border border-slate-150 rounded-lg transition active:scale-95 cursor-pointer"
+                    className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
                     title="Copiar recordatorio para enviar a WhatsApp"
                   >
                     <Share2 className="h-4 w-4" />
@@ -406,7 +406,7 @@ export default function DebtsList({
 
                   <button 
                     onClick={() => onDeleteDebt(d.id)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-150 rounded-lg transition active:scale-95 cursor-pointer"
+                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
                     title="Eliminar préstamo"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -416,36 +416,36 @@ export default function DebtsList({
             );
           })
         ) : (
-          <div className="bg-white border border-[#e2e8f0] rounded-2xl p-8 text-center text-slate-450 text-xs font-semibold">
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-8 text-center text-slate-400 text-xs font-medium">
             No se encontraron préstamos que coincidan con los filtros aplicados.
           </div>
         )}
       </div>
 
       {/* DESKTOP TABLE VIEW (hidden on mobile, visible on medium and larger screens) */}
-      <div className="hidden md:block bg-white border border-[#e2e8f0] rounded-2xl shadow-sm overflow-hidden">
+      <div className="hidden md:block bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[950px]">
-            <thead className="bg-[#f3f3f6] border-b border-[#e2e8f0] text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <thead className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">
               <tr>
-                <th className="py-4 px-6">Cuenta</th>
-                <th className="py-4 px-6">Beneficiario/Cliente</th>
+                <th className="py-3.5 px-6">Cuenta</th>
+                <th className="py-3.5 px-6">Cliente</th>
                 <th 
-                  className="py-4 px-6 cursor-pointer hover:bg-slate-200/55 select-none transition"
+                  className="py-3.5 px-6 cursor-pointer hover:bg-slate-100/80 select-none transition"
                   onClick={() => toggleSort('fecha')}
                 >
                   <div className="flex items-center space-x-1.5">
-                    <span>Fecha Registro</span>
+                    <span>Fecha</span>
                     <span className="text-[10px] text-slate-400">
                       {sortBy === 'fecha' ? (sortOrder === 'desc' ? '▼' : '▲') : '⇅'}
                     </span>
                   </div>
                 </th>
-                <th className="py-4 px-6">Mes de Pago</th>
-                <th className="py-4 px-6">Detalles / Nota</th>
-                <th className="py-4 px-6">Tasa Cambio</th>
+                <th className="py-3.5 px-6">Mes de Pago</th>
+                <th className="py-3.5 px-6">Nota / Concepto</th>
+                <th className="py-3.5 px-6">Tasa</th>
                 <th 
-                  className="py-4 px-6 cursor-pointer hover:bg-slate-200/55 select-none transition"
+                  className="py-3.5 px-6 cursor-pointer hover:bg-slate-100/80 select-none transition"
                   onClick={() => toggleSort('monto')}
                 >
                   <div className="flex items-center space-x-1.5">
@@ -456,7 +456,7 @@ export default function DebtsList({
                   </div>
                 </th>
                 <th 
-                  className="py-4 px-6 cursor-pointer hover:bg-slate-200/55 select-none transition"
+                  className="py-3.5 px-6 cursor-pointer hover:bg-slate-100/80 select-none transition"
                   onClick={() => toggleSort('saldo')}
                 >
                   <div className="flex items-center space-x-1.5">
@@ -466,11 +466,11 @@ export default function DebtsList({
                     </span>
                   </div>
                 </th>
-                <th className="py-4 px-6 text-center">Estado</th>
-                <th className="py-4 px-6 text-right">Acciones</th>
+                <th className="py-3.5 px-6 text-center">Estado</th>
+                <th className="py-3.5 px-6 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="text-sm divide-y divide-slate-100">
+            <tbody className="text-xs divide-y divide-slate-100">
               {filteredDeudas.length > 0 ? (
                 filteredDeudas.map(d => {
                   const displayTasa = d.tasaCambio || 1;
@@ -478,32 +478,32 @@ export default function DebtsList({
                   return (
                     <tr 
                       key={d.id} 
-                      className="hover:bg-slate-50/80 transition-colors duration-150 group"
+                      className="hover:bg-slate-50/60 transition-colors duration-150 group"
                     >
                       <td className="py-4 px-6">
                         {d.cuenta === 'Nina' ? (
-                          <span className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-[#dfe0ff] text-[#071155] border border-indigo-100">
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-slate-900 text-white font-mono">
                             Nina
                           </span>
                         ) : (
-                          <span className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-amber-500 text-white font-mono">
                             Nando
                           </span>
                         )}
                       </td>
                       <td className="py-4 px-6">
                         <div 
-                          className="font-bold text-slate-900 group-hover:text-[#040d53] cursor-pointer flex items-center space-x-1 transition"
+                          className="font-bold text-slate-900 group-hover:text-indigo-600 cursor-pointer flex items-center space-x-1 transition"
                           onClick={() => onOpenDetails(d.id)}
                         >
                           <span className="truncate max-w-[140px]">{d.contacto}</span>
                           <Eye className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity ml-1 shrink-0" />
                         </div>
                       </td>
-                      <td className="py-4 px-6 text-slate-600 font-mono">
+                      <td className="py-4 px-6 text-slate-500 font-mono">
                         {formatDateLabel(d.fecha)}
                       </td>
-                      <td className="py-4 px-6 text-slate-600 font-semibold font-sans">
+                      <td className="py-4 px-6 text-slate-700 font-semibold font-sans">
                         {formatMonthName(d.mesPago)}
                       </td>
                       <td 
@@ -513,35 +513,35 @@ export default function DebtsList({
                         {d.descripcion || <span className="italic text-slate-300">Sin detalles</span>}
                       </td>
                       <td className="py-4 px-6 text-slate-500 font-mono text-center">
-                        {displayTasa.toFixed(4)}
+                        {displayTasa.toFixed(2)}
                       </td>
                       <td className="py-4 px-6">
-                        <div className="font-semibold text-slate-700">
+                        <div className="font-semibold text-slate-800 font-mono">
                           {formatValue(d.monto)}
                         </div>
                         {isConverted && (
-                          <div className="text-[10px] text-slate-450 font-mono font-medium mt-0.5" title="Monto convertido en bolívares (VES)">
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5" title="Monto convertido en bolívares (VES)">
                             Conv: {formatVES(d.monto * displayTasa)}
                           </div>
                         )}
                       </td>
                       <td className="py-4 px-6">
-                        <div className={`font-extrabold ${d.saldo > 0 ? 'text-[#ba1a1a]' : 'text-slate-500'}`}>
+                        <div className={`font-black font-mono ${d.saldo > 0 ? 'text-rose-600' : 'text-slate-500'}`}>
                           {formatValue(d.saldo)}
                         </div>
                         {isConverted && d.saldo > 0 && (
-                          <div className="text-[10px] text-slate-450 font-mono font-medium mt-0.5" title="Saldo convertido en bolívares (VES)">
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5" title="Saldo convertido en bolívares (VES)">
                             Conv: {formatVES(d.saldo * displayTasa)}
                           </div>
                         )}
                       </td>
                       <td className="py-4 px-6 text-center">
                         {d.estado === 'saldado' ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#a0f572]/20 text-[#2c7100] border border-[#a0f572] uppercase">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 uppercase font-mono">
                             Saldado
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-[#ba1a1a] border border-rose-100 uppercase animate-pulse">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/80 uppercase font-mono">
                             Pendiente
                           </span>
                         )}
@@ -550,14 +550,14 @@ export default function DebtsList({
                         <div className="flex items-center justify-end space-x-2">
                           <button 
                             onClick={() => onOpenDetails(d.id)}
-                            className="text-slate-400 hover:text-[#040d53] p-1.5 rounded-lg border border-[#e2e8f0] hover:bg-indigo-50 hover:border-indigo-200 transition cursor-pointer"
+                            className="text-slate-400 hover:text-indigo-600 p-1.5 rounded-lg border border-slate-200 hover:bg-indigo-50/50 hover:border-indigo-200 transition cursor-pointer"
                             title="Ver detalles e historial de abonos"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
                           <button 
                             onClick={() => onDeleteDebt(d.id)}
-                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg border border-[#e2e8f0] hover:bg-rose-50 hover:border-rose-100 transition cursor-pointer"
+                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg border border-slate-200 hover:bg-rose-50 hover:border-rose-200 transition cursor-pointer"
                             title="Eliminar este préstamo por completo"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -569,7 +569,7 @@ export default function DebtsList({
                 })
               ) : (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-450 text-sm font-semibold">
+                  <td colSpan={10} className="py-12 text-center text-slate-400 text-sm font-medium">
                     No se encontraron préstamos que coincidan con los filtros aplicados.
                   </td>
                 </tr>
