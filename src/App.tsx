@@ -111,20 +111,19 @@ export default function App() {
     });
   }, []);
 
-  // Fetch / Load data fully compiled based on sync source
+  // Fetch / Load data fully compiled based on sync source (Option A: Instant Local Cache First)
   const loadData = useCallback(async (source: 'local' | 'sheets', currentUrl: string) => {
+    // 1. Instant zero-latency load from local storage cache
+    const fallback = getLocalFallbackData();
+    setDeudas(fallback.deudas);
+    setPagos(fallback.pagos);
+
     if (source === 'local') {
-      const fallback = getLocalFallbackData();
-      setDeudas(fallback.deudas);
-      setPagos(fallback.pagos);
       setSyncStatus('local');
       return;
     }
 
     if (!currentUrl) {
-      // Prompt configuration if spreadsheet is selected but empty URL
-      setDeudas([]);
-      setPagos([]);
       setSyncStatus('error');
       showToast("Seleccionaste Google Sheets pero no tienes una URL configurada. Abre 'Configuración' para fijarla.", "warning");
       return;
@@ -176,6 +175,7 @@ export default function App() {
 
       setDeudas(parsedDeudas);
       setPagos(parsedPagos);
+      saveLocalChanges(parsedDeudas, parsedPagos);
 
       if (resJson.clientLimits) {
         const parsedLimits: Record<string, number> = {};
@@ -187,15 +187,10 @@ export default function App() {
       }
 
       setSyncStatus('synced');
-      showToast("Respaldo en Google Drive sincronizado con éxito.", "success");
     } catch (err) {
       console.error("Error fetching data from Apps Script", err);
       setSyncStatus('error');
-      // Load current local storage backup to cover offline states
-      const cached = getLocalFallbackData();
-      setDeudas(cached.deudas);
-      setPagos(cached.pagos);
-      showToast("Hubo un error de conexión al sincronizar de Google Sheets. Cargamos tu copia local temporal.", "error");
+      showToast("Sin conexión con Google Sheets. Usando copia local en caché.", "warning");
     } finally {
       setIsSyncing(false);
     }
@@ -403,15 +398,14 @@ export default function App() {
       creadoPor: activeUser
     };
 
-    // OPTIMISTIC LOCAL STATE UPDATE - Screen responds immediately
-    const prevDeudas = [...deudas];
-    setDeudas(prev => [newDebt, ...prev]);
-    showToast("Guardando préstamo...", "info");
+    // OPTIMISTIC LOCAL STATE UPDATE - Instant UI & Local Storage cache update
+    const updatedDeudas = [newDebt, ...deudas];
+    setDeudas(updatedDeudas);
+    saveLocalChanges(updatedDeudas, pagos);
+    showToast("Préstamo registrado.", "success");
 
-    if (isLocalMode) {
-      saveLocalChanges([newDebt, ...prevDeudas], pagos);
-      showToast("Préstamo registrado en el navegador.", "success");
-    } else {
+    if (!isLocalMode && sheetUrl) {
+      setSyncStatus('pending');
       try {
         const payload = {
           action: "addDebt",
@@ -428,19 +422,18 @@ export default function App() {
         if (!res.ok) throw new Error();
 
         const data = await res.json();
-        // Server sends back synced sheets state, reload securely
         if (data && data.deudas) {
-          setDeudas(data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) })));
-          setPagos(data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) })));
-          // Update cache
-          saveLocalChanges(data.deudas, data.pagos);
-          showToast("¡Préstamo registrado y sincronizado con Google Drive!", "success");
+          const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
+          const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
+          setDeudas(freshDeudas);
+          setPagos(freshPagos);
+          saveLocalChanges(freshDeudas, freshPagos);
+          setSyncStatus('synced');
         }
       } catch (err) {
-        console.error(err);
-        // ROLLBACK state in case of connection exceptions
-        setDeudas(prevDeudas);
-        showToast("Falla de sincronización. El préstamo no se guardó en Google Sheets. Revisa tu conexión.", "error");
+        console.error("Cloud sync error:", err);
+        setSyncStatus('error');
+        showToast("Guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
       }
     }
   };
@@ -455,10 +448,6 @@ export default function App() {
     };
 
     // OPTIMISTIC UPGRADES
-    const prevDeudas = JSON.parse(JSON.stringify(deudas)) as Debt[];
-    const prevPagos = [...pagos];
-
-    // Find parent and slice balance
     const updatedDeudas = deudas.map(d => {
       if (d.id === payPayload.deudaId) {
         const nextSaldo = parseFloat((d.saldo - payPayload.monto).toFixed(2));
@@ -470,15 +459,15 @@ export default function App() {
       }
       return d;
     });
+    const updatedPagos = [newPayment, ...pagos];
 
     setDeudas(updatedDeudas);
-    setPagos(prev => [newPayment, ...prev]);
-    showToast("Registrando abono...", "info");
+    setPagos(updatedPagos);
+    saveLocalChanges(updatedDeudas, updatedPagos);
+    showToast("Abono registrado.", "success");
 
-    if (isLocalMode) {
-      saveLocalChanges(updatedDeudas, [newPayment, ...prevPagos]);
-      showToast("Abono registrado localmente.", "success");
-    } else {
+    if (!isLocalMode && sheetUrl) {
+      setSyncStatus('pending');
       try {
         const payload = {
           action: "addPayment",
@@ -496,16 +485,17 @@ export default function App() {
 
         const data = await res.json();
         if (data && data.deudas) {
-          setDeudas(data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) })));
-          setPagos(data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) })));
-          saveLocalChanges(data.deudas, data.pagos);
-          showToast("Abono registrado y sincronizado en la nube.", "success");
+          const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
+          const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
+          setDeudas(freshDeudas);
+          setPagos(freshPagos);
+          saveLocalChanges(freshDeudas, freshPagos);
+          setSyncStatus('synced');
         }
       } catch (err) {
-        console.error(err);
-        setDeudas(prevDeudas);
-        setPagos(prevPagos);
-        showToast("Falla de conexión al procesar abono. Intenta de nuevo.", "error");
+        console.error("Cloud sync error:", err);
+        setSyncStatus('error');
+        showToast("Abono guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
       }
     }
   };
@@ -519,22 +509,17 @@ export default function App() {
       "¿Eliminar Préstamo Completo?",
       `Estás a punto de borrar el préstamo registrado a "${target.contacto}" por ${new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits: 0, minimumFractionDigits: 0}).format(target.monto)}. Esta acción también anula todos sus abonos asociados. ¿Deseas continuar?`,
       async () => {
-        const prevDeudas = [...deudas];
-        const prevPagos = [...pagos];
-
         const updatedDeudas = deudas.filter(d => d.id !== id);
         const updatedPagos = pagos.filter(p => p.deudaId !== id);
 
         setDeudas(updatedDeudas);
         setPagos(updatedPagos);
-
+        saveLocalChanges(updatedDeudas, updatedPagos);
         if (selectedDetailsId === id) setSelectedDetailsId(null);
-        showToast("Eliminando de forma permanente...", "info");
+        showToast("Préstamo eliminado.", "info");
 
-        if (isLocalMode) {
-          saveLocalChanges(updatedDeudas, updatedPagos);
-          showToast("Préstamo eliminado de la base local.", "success");
-        } else {
+        if (!isLocalMode && sheetUrl) {
+          setSyncStatus('pending');
           try {
             const res = await fetch(sheetUrl, {
               method: 'POST',
@@ -547,16 +532,17 @@ export default function App() {
 
             const data = await res.json();
             if (data && data.deudas) {
-              setDeudas(data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) })));
-              setPagos(data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) })));
-              saveLocalChanges(data.deudas, data.pagos);
-              showToast("Préstamo y abonos eliminados en la base remota.", "success");
+              const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
+              const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
+              setDeudas(freshDeudas);
+              setPagos(freshPagos);
+              saveLocalChanges(freshDeudas, freshPagos);
+              setSyncStatus('synced');
             }
           } catch (err) {
-            console.error(err);
-            setDeudas(prevDeudas);
-            setPagos(prevPagos);
-            showToast("Ocurrió un error sincronizando la baja con Google Sheets.", "error");
+            console.error("Cloud sync error:", err);
+            setSyncStatus('error');
+            showToast("Baja registrada en el navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
           }
         }
       }
@@ -572,10 +558,6 @@ export default function App() {
       "¿Anular este Abono?",
       `Estás por deshacer el abono por valor de ${new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits: 0, minimumFractionDigits: 0}).format(target.monto)}. El saldo pendiente de la deuda se incrementará de nuevo.`,
       async () => {
-        const prevDeudas = JSON.parse(JSON.stringify(deudas)) as Debt[];
-        const prevPagos = [...pagos];
-
-        // Restore balance
         const updatedDeudas = deudas.map(d => {
           if (d.id === target.deudaId) {
             const nextSaldo = parseFloat((d.saldo + target.monto).toFixed(2));
@@ -587,17 +569,15 @@ export default function App() {
           }
           return d;
         });
-
         const updatedPagos = pagos.filter(p => p.id !== id);
 
         setDeudas(updatedDeudas);
         setPagos(updatedPagos);
-        showToast("Anulando transacción...", "info");
+        saveLocalChanges(updatedDeudas, updatedPagos);
+        showToast("Abono anulado.", "info");
 
-        if (isLocalMode) {
-          saveLocalChanges(updatedDeudas, updatedPagos);
-          showToast("Abono anulado con éxito en el navegador.", "success");
-        } else {
+        if (!isLocalMode && sheetUrl) {
+          setSyncStatus('pending');
           try {
             const res = await fetch(sheetUrl, {
               method: 'POST',
@@ -610,16 +590,17 @@ export default function App() {
 
             const data = await res.json();
             if (data && data.deudas) {
-              setDeudas(data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) })));
-              setPagos(data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) })));
-              saveLocalChanges(data.deudas, data.pagos);
-              showToast("Abono anulado correctamente en Google Sheets.", "success");
+              const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
+              const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
+              setDeudas(freshDeudas);
+              setPagos(freshPagos);
+              saveLocalChanges(freshDeudas, freshPagos);
+              setSyncStatus('synced');
             }
           } catch (err) {
-            console.error(err);
-            setDeudas(prevDeudas);
-            setPagos(prevPagos);
-            showToast("No pudimos conectar con los servidores para anular el abono.", "error");
+            console.error("Cloud sync error:", err);
+            setSyncStatus('error');
+            showToast("Anulación guardada en navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
           }
         }
       }

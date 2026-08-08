@@ -157,7 +157,7 @@ export default function SetupGuide({
   };
 
   const appsScriptCode = `/* ====================================================================
-* CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO (V4 - LÍMITES)
+* CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO V5 (HÍBRIDO CACHÉ)
 * ====================================================================
 * 1. Crea una Google Sheet de Google Drive en blanco o abre tu Sheet actual.
 * 2. Ve a "Extensiones" > "Apps Script".
@@ -178,7 +178,6 @@ function doGet(e) {
   var deudas = getSheetData(sheet.getSheetByName("Deudas"));
   var pagos = getSheetData(sheet.getSheetByName("Pagos"));
   
-  // Obtener limites de credito por cliente
   var limitesData = getSheetData(sheet.getSheetByName("Limites"));
   var clientLimits = {};
   limitesData.forEach(function(row) {
@@ -198,143 +197,148 @@ function doGet(e) {
 }
 
 function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet();
-  crearHojasSiNoExisten(sheet);
-  
-  var params = JSON.parse(e.postData.contents);
-  var action = params.action;
-  
-  if (action === "addDebt") {
-    var s = sheet.getSheetByName("Deudas");
-    s.appendRow([
-      params.id,
-      params.cuenta,
-      params.contacto,
-      params.tipo,
-      params.descripcion,
-      params.fecha,
-      parseFloat(params.monto),
-      parseFloat(params.saldo),
-      params.estado,
-      params.creadoPor,
-      params.mesPago,
-      parseFloat(params.tasaCambio)
-    ]);
-  } else if (action === "addPayment") {
-    var sPagos = sheet.getSheetByName("Pagos");
-    sPagos.appendRow([
-      params.id,
-      params.fecha,
-      params.deudaId,
-      parseFloat(params.monto),
-      params.nota,
-      params.registradoPor
-    ]);
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000); // Evitar colisiones de escritura simultánea (Nina y Nando)
+  } catch (err) {
+    console.warn("Lock wait timeout, proceeding cautiously");
+  }
+
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet();
+    crearHojasSiNoExisten(sheet);
     
-    // Actualizar saldo de la deuda asociada
-    var sDeudas = sheet.getSheetByName("Deudas");
-    var data = sDeudas.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0] == params.deudaId) {
-        var nuevoSaldo = parseFloat(data[i][7]) - parseFloat(params.monto);
-        sDeudas.getRange(i + 1, 8).setValue(nuevoSaldo);
-        if (nuevoSaldo <= 0) {
-          sDeudas.getRange(i + 1, 9).setValue("saldado");
-        }
-        break;
-      }
-    }
-  } else if (action === "deleteDebt") {
-    var sDeudas = sheet.getSheetByName("Deudas");
-    var data = sDeudas.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0] == params.id) {
-        sDeudas.deleteRow(i + 1);
-        break;
-      }
-    }
-    // Borrar pagos asociados
-    var sPagos = sheet.getSheetByName("Pagos");
-    var pData = sPagos.getDataRange().getValues();
-    for (var j = pData.length - 1; j >= 1; j--) {
-      if (pData[j][2] == params.id) {
-        sPagos.deleteRow(j + 1);
-      }
-    }
-  } else if (action === "deletePayment") {
-    var sPagos = sheet.getSheetByName("Pagos");
-    var pData = sPagos.getDataRange().getValues();
-    var deudaId = "";
-    var montoDevolver = 0;
+    var params = JSON.parse(e.postData.contents);
+    var action = params.action;
     
-    for (var i = 1; i < pData.length; i++) {
-      if (pData[i][0] == params.id) {
-        deudaId = pData[i][2];
-        montoDevolver = parseFloat(pData[i][3]);
-        sPagos.deleteRow(i + 1);
-        break;
-      }
-    }
-    
-    if (deudaId) {
+    if (action === "addDebt") {
+      var s = sheet.getSheetByName("Deudas");
+      s.appendRow([
+        params.id,
+        params.cuenta,
+        params.contacto,
+        params.tipo,
+        params.descripcion,
+        params.fecha,
+        parseFloat(params.monto),
+        parseFloat(params.saldo),
+        params.estado,
+        params.creadoPor,
+        params.mesPago,
+        parseFloat(params.tasaCambio)
+      ]);
+    } else if (action === "addPayment") {
+      var sPagos = sheet.getSheetByName("Pagos");
+      sPagos.appendRow([
+        params.id,
+        params.fecha,
+        params.deudaId,
+        parseFloat(params.monto),
+        params.nota,
+        params.registradoPor
+      ]);
+      
+      // Actualizar saldo y estado de la deuda en 1 solo rango
       var sDeudas = sheet.getSheetByName("Deudas");
-      var dData = sDeudas.getDataRange().getValues();
-      for (var i = 1; i < dData.length; i++) {
-        if (dData[i][0] == deudaId) {
-          var nuevoSaldo = parseFloat(dData[i][7]) + montoDevolver;
-          sDeudas.getRange(i + 1, 8).setValue(nuevoSaldo);
-          if (nuevoSaldo > 0) {
-            sDeudas.getRange(i + 1, 9).setValue("pendiente");
-          }
+      var data = sDeudas.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == params.deudaId) {
+          var nuevoSaldo = parseFloat(data[i][7]) - parseFloat(params.monto);
+          var nuevoEstado = nuevoSaldo <= 0 ? "saldado" : "pendiente";
+          sDeudas.getRange(i + 1, 8, 1, 2).setValues([[nuevoSaldo, nuevoEstado]]);
           break;
         }
       }
-    }
-  } else if (action === "setClientLimit") {
-    var sLimites = sheet.getSheetByName("Limites");
-    var data = sLimites.getDataRange().getValues();
-    var found = false;
-    var targetContact = params.contacto.trim();
-    var targetLimit = parseFloat(params.limite) || 0;
-    
-    for (var i = 1; i < data.length; i++) {
-      if (data[i][0].toString().toLowerCase() == targetContact.toLowerCase()) {
-        if (targetLimit <= 0) {
-          sLimites.deleteRow(i + 1);
-        } else {
-          sLimites.getRange(i + 1, 2).setValue(targetLimit);
+    } else if (action === "deleteDebt") {
+      var sDeudas = sheet.getSheetByName("Deudas");
+      var data = sDeudas.getDataRange().getValues();
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0] == params.id) {
+          sDeudas.deleteRow(i + 1);
+          break;
         }
-        found = true;
-        break;
+      }
+      var sPagos = sheet.getSheetByName("Pagos");
+      var pData = sPagos.getDataRange().getValues();
+      for (var j = pData.length - 1; j >= 1; j--) {
+        if (pData[j][2] == params.id) {
+          sPagos.deleteRow(j + 1);
+        }
+      }
+    } else if (action === "deletePayment") {
+      var sPagos = sheet.getSheetByName("Pagos");
+      var pData = sPagos.getDataRange().getValues();
+      var deudaId = "";
+      var montoDevolver = 0;
+      
+      for (var i = 1; i < pData.length; i++) {
+        if (pData[i][0] == params.id) {
+          deudaId = pData[i][2];
+          montoDevolver = parseFloat(pData[i][3]);
+          sPagos.deleteRow(i + 1);
+          break;
+        }
+      }
+      
+      if (deudaId) {
+        var sDeudas = sheet.getSheetByName("Deudas");
+        var dData = sDeudas.getDataRange().getValues();
+        for (var i = 1; i < dData.length; i++) {
+          if (dData[i][0] == deudaId) {
+            var nuevoSaldo = parseFloat(dData[i][7]) + montoDevolver;
+            var nuevoEstado = nuevoSaldo > 0 ? "pendiente" : "saldado";
+            sDeudas.getRange(i + 1, 8, 1, 2).setValues([[nuevoSaldo, nuevoEstado]]);
+            break;
+          }
+        }
+      }
+    } else if (action === "setClientLimit") {
+      var sLimites = sheet.getSheetByName("Limites");
+      var data = sLimites.getDataRange().getValues();
+      var found = false;
+      var targetContact = params.contacto.trim();
+      var targetLimit = parseFloat(params.limite) || 0;
+      
+      for (var i = 1; i < data.length; i++) {
+        if (data[i][0].toString().toLowerCase() == targetContact.toLowerCase()) {
+          if (targetLimit <= 0) {
+            sLimites.deleteRow(i + 1);
+          } else {
+            sLimites.getRange(i + 1, 2).setValue(targetLimit);
+          }
+          found = true;
+          break;
+        }
+      }
+      if (!found && targetLimit > 0) {
+        sLimites.appendRow([targetContact, targetLimit]);
       }
     }
-    if (!found && targetLimit > 0) {
-      sLimites.appendRow([targetContact, targetLimit]);
-    }
+    
+    var deudasActualizadas = getSheetData(sheet.getSheetByName("Deudas"));
+    var pagosActualizados = getSheetData(sheet.getSheetByName("Pagos"));
+    
+    var sLimitesActualizados = sheet.getSheetByName("Limites");
+    var limitesDataActualizados = getSheetData(sLimitesActualizados);
+    var clientLimitsActualizados = {};
+    limitesDataActualizados.forEach(function(row) {
+      if (row.contacto) {
+        clientLimitsActualizados[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
+      }
+    });
+    
+    var responsePayload = {
+      status: "success",
+      deudas: deudasActualizadas,
+      pagos: pagosActualizados,
+      clientLimits: clientLimitsActualizados
+    };
+    
+    return ContentService.createTextOutput(JSON.stringify(responsePayload))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try { lock.releaseLock(); } catch(e) {}
   }
-  
-  var deudasActualizadas = getSheetData(sheet.getSheetByName("Deudas"));
-  var pagosActualizados = getSheetData(sheet.getSheetByName("Pagos"));
-  
-  // Obtener limites actualizados
-  var sLimitesActualizados = sheet.getSheetByName("Limites");
-  var limitesDataActualizados = getSheetData(sLimitesActualizados);
-  var clientLimitsActualizados = {};
-  limitesDataActualizados.forEach(function(row) {
-    if (row.contacto) {
-      clientLimitsActualizados[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
-    }
-  });
-  
-  var responsePayload = {
-    status: "success",
-    deudas: deudasActualizadas,
-    pagos: pagosActualizados,
-    clientLimits: clientLimitsActualizados
-  };
-  
-  return ContentService.createTextOutput(JSON.stringify(responsePayload))
-    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getSheetData(sheet) {
