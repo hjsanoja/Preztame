@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Debt } from '../types';
 import { formatMonthName, formatDateLabel } from '../utils/storage';
-import { Search, Filter, Share2, ClipboardList, Eye, Trash2, CheckCircle, Clock } from 'lucide-react';
+import { Search, Filter, Share2, ClipboardList, Eye, Trash2, CheckCircle, Clock, DollarSign, Layers } from 'lucide-react';
+import { motion, PanInfo } from 'motion/react';
 
 interface DebtsListProps {
   deudas: Debt[];
@@ -24,6 +25,8 @@ export default function DebtsList({
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pendiente' | 'saldado'>('pendiente');
   const [contactoFilter, setContactoFilter] = useState('todos');
   const [mesFilter, setMesFilter] = useState('todos');
+  const [montoRange, setMontoRange] = useState<'todos' | 'pequeno' | 'mediano' | 'grande'>('todos');
+  const [tipoFilter, setTipoFilter] = useState<'todos' | 'favor' | 'negocio'>('todos');
   const [sortBy, setSortBy] = useState<'fecha' | 'monto' | 'saldo'>('fecha');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -101,6 +104,20 @@ export default function DebtsList({
       result = result.filter(d => d.mesPago === mesFilter);
     }
 
+    if (montoRange !== 'todos') {
+      if (montoRange === 'pequeno') {
+        result = result.filter(d => d.monto < 50);
+      } else if (montoRange === 'mediano') {
+        result = result.filter(d => d.monto >= 50 && d.monto <= 200);
+      } else if (montoRange === 'grande') {
+        result = result.filter(d => d.monto > 200);
+      }
+    }
+
+    if (tipoFilter !== 'todos') {
+      result = result.filter(d => d.tipo === tipoFilter);
+    }
+
     // Apply sorting
     result.sort((a, b) => {
       let comparison = 0;
@@ -116,7 +133,7 @@ export default function DebtsList({
     });
 
     return result;
-  }, [viewDeudas, search, statusFilter, contactoFilter, mesFilter, sortBy, sortOrder]);
+  }, [viewDeudas, search, statusFilter, contactoFilter, mesFilter, montoRange, tipoFilter, sortBy, sortOrder]);
 
   // Aggregate totals for the currently matching filtered subset
   const totals = useMemo(() => {
@@ -235,6 +252,29 @@ export default function DebtsList({
               ))}
             </select>
 
+            {/* Amount Range Selector */}
+            <select 
+              value={montoRange}
+              onChange={(e: any) => setMontoRange(e.target.value)}
+              className="w-full md:w-auto py-2.5 px-3.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-white font-semibold text-slate-700 cursor-pointer"
+            >
+              <option value="todos">Cualquier Monto</option>
+              <option value="pequeno">Pequeños (&lt; $50)</option>
+              <option value="mediano">Medianos ($50 - $200)</option>
+              <option value="grande">Grandes (&gt; $200)</option>
+            </select>
+
+            {/* Type Selector (Favor vs Negocio) */}
+            <select 
+              value={tipoFilter}
+              onChange={(e: any) => setTipoFilter(e.target.value)}
+              className="w-full md:w-auto py-2.5 px-3.5 border border-slate-200/80 rounded-full text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-white font-semibold text-slate-700 cursor-pointer"
+            >
+              <option value="todos">Cualquier Tipo</option>
+              <option value="favor">Solo Favor Personal</option>
+              <option value="negocio">Solo Negocio / Comercio</option>
+            </select>
+
             {/* Actions */}
             <button 
               onClick={handleExportCSV}
@@ -264,15 +304,19 @@ export default function DebtsList({
               {statusFilter !== 'todos' ? `Estado: ${statusFilter === 'pendiente' ? 'Pendiente' : 'Saldado'}` : 'Todos'} 
               {contactoFilter !== 'todos' && ` | Cliente: ${contactoFilter}`}
               {mesFilter !== 'todos' && ` | Vence: ${formatMonthName(mesFilter)}`}
+              {montoRange !== 'todos' && ` | Monto: ${montoRange === 'pequeno' ? '<$50' : montoRange === 'mediano' ? '$50-$200' : '>$200'}`}
+              {tipoFilter !== 'todos' && ` | Tipo: ${tipoFilter}`}
               {search.trim() && ` | Búsqueda: "${search}"`}
             </span>
-            {(statusFilter !== 'todos' || contactoFilter !== 'todos' || mesFilter !== 'todos' || search.trim() !== '') && (
+            {(statusFilter !== 'todos' || contactoFilter !== 'todos' || mesFilter !== 'todos' || montoRange !== 'todos' || tipoFilter !== 'todos' || search.trim() !== '') && (
               <button 
                 onClick={() => {
                   setSearch('');
                   setStatusFilter('pendiente');
                   setContactoFilter('todos');
                   setMesFilter('todos');
+                  setMontoRange('todos');
+                  setTipoFilter('todos');
                 }}
                 className="text-[10px] text-blue-600 hover:underline font-bold uppercase tracking-wider ml-1 px-2.5 py-0.5 bg-white border border-slate-200 rounded-full cursor-pointer shadow-2xs"
               >
@@ -309,124 +353,154 @@ export default function DebtsList({
               }
             };
 
+            const handleDragEnd = (_: any, info: PanInfo) => {
+              if (info.offset.x > 80) {
+                // Swiped right -> Open details/Abono
+                onOpenDetails(d.id);
+              } else if (info.offset.x < -80) {
+                // Swiped left -> Delete debt
+                onDeleteDebt(d.id);
+              }
+            };
+
             return (
-              <div 
-                key={d.id}
-                id={`mobile-card-${d.id}`}
-                className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs relative overflow-hidden transition hover:border-slate-300"
-              >
-                {/* Visual Accent Bar */}
-                <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isPending ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                
-                {/* Header info */}
-                <div className="pl-2 flex items-start justify-between mb-2">
-                  <div>
-                    <h5 className="font-extrabold text-slate-900 text-sm tracking-tight flex items-center space-x-1.5">
-                      <span>{d.contacto}</span>
-                      <span className="text-[10px] text-slate-400 font-mono font-normal">#{d.id.slice(0, 5)}</span>
-                    </h5>
-                    <p className="text-[11px] text-slate-500 font-normal line-clamp-1 mt-0.5">
-                      {d.descripcion || <span className="italic text-slate-300">Sin nota descriptiva</span>}
-                    </p>
+              <div key={d.id} className="relative overflow-hidden rounded-2xl touch-pan-y">
+                {/* Background action trays when swiped */}
+                <div className="absolute inset-0 flex justify-between items-center px-4 rounded-2xl pointer-events-none">
+                  {/* Left tray (swiping right -> Abono / Ver) */}
+                  <div className="flex items-center space-x-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200">
+                    <Eye className="h-4 w-4" />
+                    <span>Abonar ➔</span>
                   </div>
-
-                  <div className="flex flex-col items-end space-y-1">
-                    {d.cuenta === 'Nina' ? (
-                      <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-slate-900 text-white font-mono">
-                        Nina
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-500 text-white font-mono">
-                        Nando
-                      </span>
-                    )}
-
-                    {isPending ? (
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/80 font-mono">
-                        Pendiente
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80 font-mono">
-                        Saldado
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Amount grid */}
-                <div className="pl-2 grid grid-cols-2 gap-3 my-3 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Original</span>
-                    <p className="text-xs font-bold text-slate-700 font-mono mt-0.5">{formatValue(d.monto)}</p>
-                    {isConverted && (
-                      <p className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
-                        {formatVES(d.monto * displayTasa)}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Exigible</span>
-                    <p className={`text-xs font-black font-mono mt-0.5 ${isPending ? 'text-rose-600' : 'text-slate-500'}`}>
-                      {formatValue(d.saldo)}
-                    </p>
-                    {isConverted && d.saldo > 0 && (
-                      <p className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
-                        {formatVES(d.saldo * displayTasa)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress bar if partially paid */}
-                {isPending && cobradoPercent > 0 && (
-                  <div className="pl-2 mb-3">
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold mb-1">
-                      <span>Capital Abonado</span>
-                      <span className="text-emerald-600 font-bold">{cobradoPercent}% cobrado</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full" style={{ width: `${cobradoPercent}%` }} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Dates & Rates metadata */}
-                <div className="pl-2 flex items-center justify-between text-[10px] text-slate-500 font-medium my-2.5">
-                  <div className="flex items-center space-x-1">
-                    <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span>Pago: <strong className="text-slate-900 font-bold">{formatMonthName(d.mesPago)}</strong></span>
-                  </div>
-                  <div className="text-slate-400 font-mono">
-                    Tasa: {displayTasa.toFixed(2)} | Reg: {formatDateLabel(d.fecha)}
-                  </div>
-                </div>
-
-                {/* Card footer actions */}
-                <div className="pl-2 pt-2.5 border-t border-slate-100 flex items-center gap-2">
-                  <button 
-                    onClick={() => onOpenDetails(d.id)}
-                    className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 transition shadow-xs active:scale-95 cursor-pointer"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                    <span>Abonar / Detalles</span>
-                  </button>
-
-                  <button 
-                    onClick={handleShare}
-                    className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
-                    title="Copiar recordatorio para enviar a WhatsApp"
-                  >
-                    <Share2 className="h-4 w-4" />
-                  </button>
-
-                  <button 
-                    onClick={() => onDeleteDebt(d.id)}
-                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
-                    title="Eliminar préstamo"
-                  >
+                  {/* Right tray (swiping left -> Delete) */}
+                  <div className="flex items-center space-x-2 text-rose-600 font-bold text-xs bg-rose-50 px-3 py-2 rounded-xl border border-rose-200">
+                    <span>⮨ Eliminar</span>
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </div>
                 </div>
+
+                {/* Foreground Swipeable Card */}
+                <motion.div 
+                  id={`mobile-card-${d.id}`}
+                  drag="x"
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.25}
+                  onDragEnd={handleDragEnd}
+                  className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs relative overflow-hidden transition hover:border-slate-300 z-10"
+                >
+                  {/* Visual Accent Bar */}
+                  <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isPending ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                  
+                  {/* Header info */}
+                  <div className="pl-2 flex items-start justify-between mb-2">
+                    <div>
+                      <h5 className="font-extrabold text-slate-900 text-sm tracking-tight flex items-center space-x-1.5">
+                        <span>{d.contacto}</span>
+                        <span className="text-[10px] text-slate-400 font-mono font-normal">#{d.id.slice(0, 5)}</span>
+                      </h5>
+                      <p className="text-[11px] text-slate-500 font-normal line-clamp-1 mt-0.5">
+                        {d.descripcion || <span className="italic text-slate-300">Sin nota descriptiva</span>}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end space-y-1">
+                      {d.cuenta === 'Nina' ? (
+                        <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-slate-900 text-white font-mono">
+                          Nina
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 text-[9px] font-bold rounded-full bg-amber-500 text-white font-mono">
+                          Nando
+                        </span>
+                      )}
+
+                      {isPending ? (
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/80 font-mono">
+                          Pendiente
+                        </span>
+                      ) : (
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80 font-mono">
+                          Saldado
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amount grid */}
+                  <div className="pl-2 grid grid-cols-2 gap-3 my-3 bg-slate-50/80 p-3 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Original</span>
+                      <p className="text-xs font-bold text-slate-700 font-mono mt-0.5">{formatValue(d.monto)}</p>
+                      {isConverted && (
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
+                          {formatVES(d.monto * displayTasa)}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Exigible</span>
+                      <p className={`text-xs font-black font-mono mt-0.5 ${isPending ? 'text-rose-600' : 'text-slate-500'}`}>
+                        {formatValue(d.saldo)}
+                      </p>
+                      {isConverted && d.saldo > 0 && (
+                        <p className="text-[9px] text-slate-400 font-mono mt-0.5 leading-none">
+                          {formatVES(d.saldo * displayTasa)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Progress bar if partially paid */}
+                  {isPending && cobradoPercent > 0 && (
+                    <div className="pl-2 mb-3">
+                      <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold mb-1">
+                        <span>Capital Abonado</span>
+                        <span className="text-emerald-600 font-bold">{cobradoPercent}% cobrado</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full" style={{ width: `${cobradoPercent}%` }} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dates & Rates metadata */}
+                  <div className="pl-2 flex items-center justify-between text-[10px] text-slate-500 font-medium my-2.5">
+                    <div className="flex items-center space-x-1">
+                      <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span>Pago: <strong className="text-slate-900 font-bold">{formatMonthName(d.mesPago)}</strong></span>
+                    </div>
+                    <div className="text-slate-400 font-mono">
+                      Tasa: {displayTasa.toFixed(2)} | Reg: {formatDateLabel(d.fecha)}
+                    </div>
+                  </div>
+
+                  {/* Card footer actions */}
+                  <div className="pl-2 pt-2.5 border-t border-slate-100 flex items-center gap-2">
+                    <button 
+                      onClick={() => onOpenDetails(d.id)}
+                      className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center justify-center space-x-1.5 transition shadow-xs active:scale-95 cursor-pointer"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Abonar / Detalles</span>
+                    </button>
+
+                    <button 
+                      onClick={handleShare}
+                      className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
+                      title="Copiar recordatorio para enviar a WhatsApp"
+                    >
+                      <Share2 className="h-4 w-4" />
+                    </button>
+
+                    <button 
+                      onClick={() => onDeleteDebt(d.id)}
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-xl transition active:scale-95 cursor-pointer"
+                      title="Eliminar préstamo"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </motion.div>
               </div>
             );
           })

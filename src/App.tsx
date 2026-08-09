@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import confetti from 'canvas-confetti';
 import { Debt, Payment } from './types';
 import { 
   getStoredSource, 
@@ -15,6 +16,7 @@ import SetupGuide from './components/SetupGuide';
 import DebtDetailsModal from './components/DebtDetailsModal';
 import DebtFormModal from './components/DebtFormModal';
 import AbonoFormModal from './components/AbonoFormModal';
+import QuickSearchModal from './components/QuickSearchModal';
 
 // Icons
 import { 
@@ -30,7 +32,9 @@ import {
   WifiOff,
   Keyboard,
   User,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Search,
+  Plus
 } from 'lucide-react';
 
 interface Toast {
@@ -68,6 +72,7 @@ export default function App() {
   const [selectedDetailsId, setSelectedDetailsId] = useState<string | null>(null);
   const [isDebtFormOpen, setIsDebtFormOpen] = useState(false);
   const [isAbonoFormOpen, setIsAbonoFormOpen] = useState(false);
+  const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
   const [abonoDebtId, setAbonoDebtId] = useState<string | null>(null);
 
   // Client credit limits state
@@ -188,7 +193,7 @@ export default function App() {
 
       setSyncStatus('synced');
     } catch (err) {
-      console.error("Error fetching data from Apps Script", err);
+      console.warn("Sin conexión con Google Sheets, usando respaldo local:", err);
       setSyncStatus('error');
       showToast("Sin conexión con Google Sheets. Usando copia local en caché.", "warning");
     } finally {
@@ -244,6 +249,13 @@ export default function App() {
   // Global Keyboard shortcuts handling
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K anytime (even when editing)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsQuickSearchOpen(prev => !prev);
+        return;
+      }
+
       const isEditing = document.activeElement?.tagName === 'INPUT' || 
                         document.activeElement?.tagName === 'TEXTAREA' || 
                         document.activeElement?.tagName === 'SELECT';
@@ -254,6 +266,7 @@ export default function App() {
       if (e.key === "Escape") {
         setIsDebtFormOpen(false);
         setIsAbonoFormOpen(false);
+        setIsQuickSearchOpen(false);
         setSelectedDetailsId(null);
         setConfirm(prev => ({ ...prev, isOpen: false }));
       }
@@ -366,7 +379,7 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.error("Failed to sync limit to Google Sheets", err);
+        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
         showToast("No se pudo sincronizar el límite en Google Sheets. Se guardó localmente por ahora.", "warning");
       }
     }
@@ -431,7 +444,7 @@ export default function App() {
           setSyncStatus('synced');
         }
       } catch (err) {
-        console.error("Cloud sync error:", err);
+        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
         setSyncStatus('error');
         showToast("Guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
       }
@@ -448,12 +461,19 @@ export default function App() {
     };
 
     // OPTIMISTIC UPGRADES
+    let isFullySettled = false;
+    let targetContact = '';
+
     const updatedDeudas = deudas.map(d => {
       if (d.id === payPayload.deudaId) {
         const nextSaldo = parseFloat((d.saldo - payPayload.monto).toFixed(2));
+        if (nextSaldo <= 0) {
+          isFullySettled = true;
+          targetContact = d.contacto;
+        }
         return {
           ...d,
-          saldo: nextSaldo,
+          saldo: Math.max(0, nextSaldo),
           estado: (nextSaldo <= 0 ? 'saldado' : 'pendiente') as 'saldado' | 'pendiente'
         };
       }
@@ -464,7 +484,21 @@ export default function App() {
     setDeudas(updatedDeudas);
     setPagos(updatedPagos);
     saveLocalChanges(updatedDeudas, updatedPagos);
-    showToast("Abono registrado.", "success");
+
+    if (isFullySettled) {
+      try {
+        confetti({
+          particleCount: 120,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {
+        console.error("Confetti launch failed", e);
+      }
+      showToast(`🎉 ¡DEUDA SALDADA! ${targetContact} ha pagado su préstamo por completo.`, "success");
+    } else {
+      showToast("Abono registrado.", "success");
+    }
 
     if (!isLocalMode && sheetUrl) {
       setSyncStatus('pending');
@@ -493,7 +527,7 @@ export default function App() {
           setSyncStatus('synced');
         }
       } catch (err) {
-        console.error("Cloud sync error:", err);
+        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
         setSyncStatus('error');
         showToast("Abono guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
       }
@@ -540,7 +574,7 @@ export default function App() {
               setSyncStatus('synced');
             }
           } catch (err) {
-            console.error("Cloud sync error:", err);
+            console.warn("Cloud sync warning (Google Sheets no disponible):", err);
             setSyncStatus('error');
             showToast("Baja registrada en el navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
           }
@@ -598,7 +632,7 @@ export default function App() {
               setSyncStatus('synced');
             }
           } catch (err) {
-            console.error("Cloud sync error:", err);
+            console.warn("Cloud sync warning (Google Sheets no disponible):", err);
             setSyncStatus('error');
             showToast("Anulación guardada en navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
           }
@@ -668,6 +702,17 @@ export default function App() {
             {/* Config & Active operator user block */}
             <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
               
+              {/* Quick Search trigger button */}
+              <button
+                onClick={() => setIsQuickSearchOpen(true)}
+                className="hidden sm:flex items-center space-x-2 bg-slate-100/90 hover:bg-slate-200/80 text-slate-700 border border-slate-200/80 px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer active:scale-95 shadow-2xs"
+                title="Búsqueda Rápida (Cmd + K)"
+              >
+                <Search className="h-3.5 w-3.5 text-slate-500" />
+                <span className="hidden lg:inline">Buscar</span>
+                <kbd className="bg-white border border-slate-300 text-slate-500 text-[10px] px-1.5 py-0.2 rounded-md font-mono">⌘K</kbd>
+              </button>
+
               {/* Operator Badge Switcher */}
               <div className="flex items-center space-x-1 bg-slate-100/80 p-1 rounded-full border border-slate-200/80">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 font-mono hidden md:inline">Operando:</span>
@@ -828,9 +873,10 @@ export default function App() {
             Atajos de teclado:
           </span>
           <div className="flex space-x-5">
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">⌘K</kbd> Búsqueda Rápida</span>
             <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">N</kbd> Nuevo Préstamo</span>
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">1 - 4</kbd> Cambiar Pestañas</span>
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">Esc</kbd> Cerrar Ventanas</span>
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">1 - 4</kbd> Pestañas</span>
+            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">Esc</kbd> Cerrar</span>
           </div>
         </div>
 
@@ -842,6 +888,7 @@ export default function App() {
               pagos={pagos}
               accountView={accountView}
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
+              onOpenDetails={(id) => setSelectedDetailsId(id)}
             />
           )}
 
@@ -920,6 +967,42 @@ export default function App() {
         onSubmit={handleAddPayment}
         activeUser={activeUser}
       />
+
+      {/* Quick Search Modal (Cmd+K / Ctrl+K) */}
+      <QuickSearchModal 
+        isOpen={isQuickSearchOpen}
+        onClose={() => setIsQuickSearchOpen(false)}
+        deudas={deudas}
+        pagos={pagos}
+        onOpenDetails={(id) => {
+          setSelectedDetailsId(id);
+          setIsQuickSearchOpen(false);
+        }}
+        onOpenNewDebt={() => {
+          setIsDebtFormOpen(true);
+          setIsQuickSearchOpen(false);
+        }}
+        onNavigateTab={(tab) => setCurrentTab(tab)}
+        onToggleAccountView={(view) => setAccountView(view)}
+      />
+
+      {/* Floating Action Button (FAB) for Mobile screens */}
+      <div className="fixed bottom-6 right-6 sm:hidden z-40 flex flex-col items-end space-y-2.5">
+        <button
+          onClick={() => setIsQuickSearchOpen(true)}
+          className="bg-white text-slate-700 p-3 rounded-full shadow-lg border border-slate-200/80 flex items-center justify-center active:scale-90 transition cursor-pointer hover:bg-slate-50"
+          title="Búsqueda Rápida"
+        >
+          <Search className="h-5 w-5 text-slate-600" />
+        </button>
+        <button
+          onClick={() => setIsDebtFormOpen(true)}
+          className="gemini-gradient-bg text-white p-4 rounded-full shadow-xl shadow-blue-500/25 flex items-center justify-center active:scale-90 transition cursor-pointer"
+          title="Registrar Nuevo Préstamo"
+        >
+          <Plus className="h-6 w-6 stroke-[2.5]" />
+        </button>
+      </div>
 
       {/* Custom Confirmation Dialog (Replaces native window.confirm) */}
       {confirm.isOpen && (

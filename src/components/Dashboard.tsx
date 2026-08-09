@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatMonthName } from '../utils/storage';
+import UpcomingDueWidget from './UpcomingDueWidget';
+import NinaVsNandoComparison from './NinaVsNandoComparison';
+import ExchangeRateCalculator from './ExchangeRateCalculator';
 import { 
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -18,9 +21,10 @@ interface DashboardProps {
   pagos: Payment[];
   accountView: 'Ambos' | 'Nina' | 'Nando';
   onOpenNewDebt: () => void;
+  onOpenDetails?: (id: string) => void;
 }
 
-export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }: DashboardProps) {
+export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt, onOpenDetails }: DashboardProps) {
   
   // Format currency helpers - No decimals as requested
   const formatValue = (num: number) => {
@@ -871,6 +875,20 @@ export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt }:
           </p>
         </div>
 
+      </div>
+
+      {/* Advanced Control & Analysis Widgets: Agenda + Comparativa + Calculadora */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <UpcomingDueWidget 
+          deudas={viewDeudas} 
+          onOpenDetails={(id) => onOpenDetails && onOpenDetails(id)} 
+        />
+        <NinaVsNandoComparison 
+          deudas={deudas} 
+        />
+        <ExchangeRateCalculator 
+          deudas={viewDeudas} 
+        />
       </div>
 
       {/* Drill-Down Inspector Modal / Drawer */}

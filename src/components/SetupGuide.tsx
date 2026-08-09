@@ -41,6 +41,77 @@ export default function SetupGuide({
   const [copiedLink, setCopiedLink] = useState(false);
   const [showFaq, setShowFaq] = useState<{ [key: string]: boolean }>({});
 
+  // Diagnostic state for connection testing
+  const [testResult, setTestResult] = useState<{
+    status: 'idle' | 'testing' | 'success' | 'error-cors' | 'error-url' | 'error-server';
+    message?: string;
+  }>({ status: 'idle' });
+
+  const runDiagnosticTest = async (urlToTest: string) => {
+    const trimmed = urlToTest.trim();
+    if (!trimmed) {
+      setTestResult({ status: 'error-url', message: 'Por favor ingresa una URL.' });
+      return;
+    }
+
+    if (trimmed.includes('/edit')) {
+      setTestResult({
+        status: 'error-url',
+        message: 'La URL contiene "/edit". Copiaste el enlace de edición de tu hoja. Debes usar la URL de la Aplicación Web publicada que termina en /exec.'
+      });
+      return;
+    }
+
+    if (!trimmed.includes('/exec')) {
+      setTestResult({
+        status: 'error-url',
+        message: 'La URL no contiene "/exec". Asegúrate de crear una "Nueva implementación" tipo Aplicación Web en Apps Script.'
+      });
+      return;
+    }
+
+    setTestResult({ status: 'testing', message: 'Enviando petición de prueba a Google Apps Script...' });
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const res = await fetch(trimmed, {
+        method: 'GET',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        setTestResult({
+          status: 'error-server',
+          message: `El servidor de Google respondió con código HTTP ${res.status}.`
+        });
+        return;
+      }
+
+      const json = await res.json();
+      if (json && (Array.isArray(json.deudas) || typeof json === 'object')) {
+        setTestResult({
+          status: 'success',
+          message: '¡Conexión Exitosa! Tu Google Sheet está respondiendo correctamente.'
+        });
+      } else {
+        setTestResult({
+          status: 'error-server',
+          message: 'El script respondió pero los datos no coinciden. Revisa haber pegado el código completo en Apps Script.'
+        });
+      }
+    } catch (err: any) {
+      console.warn("Diagnostic test failed:", err);
+      setTestResult({
+        status: 'error-cors',
+        message: 'Error de conexión / CORS ("Failed to fetch"). Google Apps Script requiere configuración de acceso o autorización previa.'
+      });
+    }
+  };
+
   // NEW STUFF: Client Limits & Backup
   const [tempLimits, setTempLimits] = useState<Record<string, string>>({});
   const [newContactName, setNewContactName] = useState('');
@@ -499,7 +570,10 @@ function crearHojasSiNoExisten(sheet) {
                   type="url"
                   placeholder="https://script.google.com/macros/s/.../exec"
                   value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
+                  onChange={(e) => {
+                    setUrlInput(e.target.value);
+                    setTestResult({ status: 'idle' });
+                  }}
                   className="w-full px-3.5 py-2.5 border border-[#e2e8f0] rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] transition font-mono"
                   required
                 />
@@ -508,22 +582,99 @@ function crearHojasSiNoExisten(sheet) {
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="submit"
-                  className="w-full bg-[#040d53] hover:opacity-90 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 cursor-pointer"
+                  className="w-full bg-[#040d53] hover:opacity-90 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 cursor-pointer shadow-xs"
                 >
-                  Guardar y Probar Conexión
+                  Guardar URL y Probar Conexión
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => runDiagnosticTest(urlInput)}
+                  className="w-full bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200/80 font-bold text-xs py-2 px-4 rounded-xl transition active:scale-95 cursor-pointer flex items-center justify-center space-x-1.5"
+                >
+                  <Sliders className="h-3.5 w-3.5" />
+                  <span>Diagnosticar Conexión</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
                     setUrlInput('');
                     onClearSettings();
+                    setTestResult({ status: 'idle' });
                   }}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 cursor-pointer"
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs py-2 px-4 rounded-xl transition active:scale-95 cursor-pointer"
                 >
                   Desconectar / Resetear URL
                 </button>
               </div>
             </form>
+
+            {/* Diagnostic Result Banner */}
+            {testResult.status !== 'idle' && (
+              <div className="p-4 rounded-2xl text-xs space-y-2 border animate-fade-in transition-all">
+                {testResult.status === 'testing' && (
+                  <div className="text-blue-800 font-bold flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-ping" />
+                    <span>{testResult.message}</span>
+                  </div>
+                )}
+
+                {testResult.status === 'success' && (
+                  <div className="bg-emerald-50 text-emerald-900 border-emerald-200 p-3 rounded-xl space-y-1">
+                    <div className="font-extrabold flex items-center space-x-1.5 text-emerald-800">
+                      <Check className="h-4 w-4 text-emerald-600" />
+                      <span>{testResult.message}</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700">Tus datos se sincronizarán en tiempo real con Google Sheets.</p>
+                  </div>
+                )}
+
+                {testResult.status === 'error-cors' && (
+                  <div className="bg-rose-50 border-rose-200 text-rose-950 p-3.5 rounded-xl space-y-2.5">
+                    <div className="font-extrabold text-rose-900 text-xs flex items-center space-x-1.5">
+                      <ShieldAlert className="h-4 w-4 text-rose-600 shrink-0" />
+                      <span>Solución a "Failed to Fetch" (Error CORS / Sin Permisos)</span>
+                    </div>
+                    
+                    <p className="text-[11px] text-slate-700 leading-relaxed">
+                      Google bloqueó la conexión automática por una de estas 2 razones:
+                    </p>
+
+                    <ol className="list-decimal pl-4 space-y-2 text-[11px] font-medium text-slate-800">
+                      <li>
+                        <strong>Acceso "Cualquiera":</strong> En Apps Script, ve a <strong>Implementar &gt; Administrar implementaciones</strong> y confirma que <strong>"Quién tiene acceso"</strong> esté fijado en <strong>"Cualquiera"</strong> (Anyone).
+                      </li>
+                      <li>
+                        <strong>Autorización de Cuenta:</strong> Abre el enlace directamente en tu navegador para autorizar a Google:
+                      </li>
+                    </ol>
+
+                    {urlInput && (
+                      <a
+                        href={urlInput}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center justify-center space-x-1.5 w-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-2 px-3 rounded-lg shadow-xs transition cursor-pointer"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <span>Abrir URL para Autorizar en Google</span>
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {(testResult.status === 'error-url' || testResult.status === 'error-server') && (
+                  <div className="bg-amber-50 border-amber-200 text-amber-900 p-3 rounded-xl space-y-1">
+                    <div className="font-extrabold flex items-center space-x-1 text-amber-900">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <span>Error de Configuración</span>
+                    </div>
+                    <p className="text-[11px] text-amber-800">{testResult.message}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {sheetUrl && (
               <div className="border-t border-slate-100 pt-4 space-y-3">
