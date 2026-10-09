@@ -26,8 +26,8 @@ export default defineConfig(() => {
           scope: './',
           display: 'standalone',
           orientation: 'portrait',
-          background_color: '#f8fafc',
-          theme_color: '#f8fafc',
+          background_color: '#f8fafd',
+          theme_color: '#f8fafd',
           categories: ['finance', 'productivity'],
           icons: [
             {src: 'pwa-192.png', sizes: '192x192', type: 'image/png', purpose: 'any'},

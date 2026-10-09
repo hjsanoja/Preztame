@@ -24,9 +24,9 @@ export class SheetsError extends Error {
 export function describeSheetsError(code: SheetsErrorCode): string {
   switch (code) {
     case 'not-configured': return 'Falta configurar la URL o la clave de Google Sheets.';
-    case 'unauthorized': return 'La clave de la app no coincide con la del Apps Script. Usa "Diagnosticar conexión" en Configuración.';
-    case 'no-key': return 'El Apps Script no tiene clave. Copia el código desde Configuración (ya trae tu clave) y publica una nueva versión.';
-    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v6 desde Configuración.';
+    case 'unauthorized': return 'La clave de la app no coincide con la del Apps Script. Usa "Diagnosticar conexión" en Ajustes.';
+    case 'no-key': return 'El Apps Script no tiene clave. Copia el código desde Ajustes (ya trae tu clave) y publica una nueva versión.';
+    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v6 desde Ajustes.';
     case 'busy': return 'Google Sheets está ocupado. Se reintentará en unos segundos.';
     case 'timeout': return 'Google Sheets tardó demasiado en responder.';
     case 'network': return 'Sin conexión con Google Sheets.';

@@ -33,19 +33,19 @@ export default function UpcomingDueWidget({ deudas, onOpenDetails }: UpcomingDue
   }, [deudas]);
 
   return (
-    <div id="upcoming-due-agenda" className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
+    <div id="upcoming-due-agenda" className="bg-surface-lowest border border-outline-variant/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <div className="p-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl shrink-0">
+            <div className="p-2 bg-warning-container text-warning border border-warning/40 rounded-xl shrink-0">
               <Calendar className="h-5 w-5" />
             </div>
             <div>
-              <h4 className="font-black text-slate-900 text-base">Agenda de Próximos Vencimientos</h4>
-              <p className="text-xs text-slate-500 font-medium">Cronograma inmediato de cobros recomendados</p>
+              <h4 className="font-bold text-on-surface text-base">Agenda de Próximos Vencimientos</h4>
+              <p className="text-xs text-on-surface-variant font-medium">Cronograma inmediato de cobros recomendados</p>
             </div>
           </div>
-          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-mono">
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-warning-container text-on-warning-container tabular-nums">
             {upcomingList.length} Pendientes
           </span>
         </div>
@@ -62,37 +62,37 @@ export default function UpcomingDueWidget({ deudas, onOpenDetails }: UpcomingDue
                   key={debt.id}
                   onClick={() => onOpenDetails(debt.id)}
                   className={`p-3 border rounded-xl flex items-center justify-between transition cursor-pointer group ${
-                    isOverdue ? 'bg-rose-50/60 border-rose-200 hover:bg-rose-100/60' :
-                    isCurrent ? 'bg-amber-50/60 border-amber-200 hover:bg-amber-100/60' :
-                    'bg-slate-50/80 border-slate-200/80 hover:bg-slate-100/80'
+                    isOverdue ? 'bg-error-container/60 border-error/40 hover:bg-error-container/60' :
+                    isCurrent ? 'bg-warning-container/60 border-warning/40 hover:bg-warning-container/60' :
+                    'bg-surface-low/80 border-outline-variant/80 hover:bg-surface-container/80'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
                     <div className={`p-2 rounded-xl shrink-0 ${
-                      isOverdue ? 'bg-rose-100 text-rose-700' :
-                      isCurrent ? 'bg-amber-100 text-amber-700' :
-                      'bg-slate-200 text-slate-700'
+                      isOverdue ? 'bg-error-container text-on-error-container' :
+                      isCurrent ? 'bg-warning-container text-on-warning-container' :
+                      'bg-surface-high text-on-surface'
                     }`}>
                       <Clock className="h-4 w-4" />
                     </div>
 
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-extrabold text-xs text-slate-900 group-hover:text-blue-600 transition">
+                        <span className="font-semibold text-xs text-on-surface group-hover:text-primary transition">
                           {debt.contacto}
                         </span>
-                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                          debt.cuenta === 'Nina' ? 'bg-slate-900 text-white' : 'bg-amber-500 text-white'
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          debt.cuenta === 'Nina' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-warning text-on-warning'
                         }`}>
                           {debt.cuenta}
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mt-0.5">
+                      <p className="text-[11px] text-on-surface-variant font-medium line-clamp-1 mt-0.5">
                         {isOverdue ? (
-                          <strong className="text-rose-600 font-bold">¡Atrasado! ({formatMonthName(debt.mesPago)})</strong>
+                          <strong className="text-error font-bold">¡Atrasado! ({formatMonthName(debt.mesPago)})</strong>
                         ) : isCurrent ? (
-                          <strong className="text-amber-700 font-bold">Vence este mes ({formatMonthName(debt.mesPago)})</strong>
+                          <strong className="text-on-warning-container font-bold">Vence este mes ({formatMonthName(debt.mesPago)})</strong>
                         ) : (
                           <span>Vence: {formatMonthName(debt.mesPago)}</span>
                         )}
@@ -101,10 +101,10 @@ export default function UpcomingDueWidget({ deudas, onOpenDetails }: UpcomingDue
                   </div>
 
                   <div className="text-right shrink-0">
-                    <span className="font-black text-xs text-slate-900 font-mono block">
+                    <span className="font-bold text-xs text-on-surface tabular-nums block">
                       {formatValue(debt.monto)}
                     </span>
-                    <span className="text-[10px] text-rose-600 font-extrabold font-mono block">
+                    <span className="text-[11px] text-error font-semibold tabular-nums block">
                       Saldo: {formatValue(debt.saldo)}
                     </span>
                   </div>
@@ -112,14 +112,14 @@ export default function UpcomingDueWidget({ deudas, onOpenDetails }: UpcomingDue
               );
             })
           ) : (
-            <div className="py-8 text-center text-slate-400 text-xs font-medium">
+            <div className="py-8 text-center text-outline text-xs font-medium">
               🎉 No hay cobros urgentes ni vencidos en la agenda.
             </div>
           )}
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-3 pt-2 border-t border-slate-100 font-medium">
+      <p className="text-[11px] text-outline mt-3 pt-2 border-t border-outline-variant font-medium">
         💡 Prioriza el contacto con clientes cuyos cobros estén señalados en rojo o amarillo.
       </p>
     </div>

@@ -1,3 +1,4 @@
+import { useFocusTrap } from '../hooks/useFocusTrap';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatMonthName } from '../utils/storage';
@@ -25,6 +26,7 @@ export default function QuickSearchModal({
   onNavigateTab,
   onToggleAccountView
 }: QuickSearchModalProps) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
   const [query, setQuery] = useState('');
 
   // Auto focus input when modal opens
@@ -60,75 +62,82 @@ export default function QuickSearchModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 pt-16 sm:pt-4 bg-slate-900/60 backdrop-blur-xs">
+      <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 pt-[calc(4rem+env(safe-area-inset-top))] sm:pt-4 bg-scrim/40" onClick={onClose}>
         <motion.div 
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Búsqueda rápida"
+          onClick={(e) => e.stopPropagation()}
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
-          className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col"
+          className="bg-surface-high text-on-surface rounded-[28px] m3-elevation-3 w-full max-w-xl overflow-hidden flex flex-col max-h-[80dvh]"
         >
           {/* Search Input Bar */}
-          <div className="p-4 border-b border-slate-100 flex items-center space-x-3 bg-slate-50/80">
-            <Search className="h-5 w-5 text-blue-600 shrink-0" />
+          <div className="p-4 border-b border-outline-variant flex items-center space-x-3 bg-surface-low/80">
+            <Search className="h-5 w-5 text-primary shrink-0" />
             <input 
-              type="text" 
+              type="search" 
               autoFocus
-              placeholder="Buscar cliente, concepto, creador o comando (Cmd+K)..."
+              aria-label="Buscar"
+              placeholder="Buscar cliente o concepto"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-transparent text-sm sm:text-base font-medium text-slate-900 focus:outline-none placeholder:text-slate-400"
+              className="w-full bg-transparent text-sm sm:text-base font-medium text-on-surface focus:outline-none placeholder:text-outline"
             />
             {query && (
               <button 
                 onClick={() => setQuery('')}
-                className="p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-slate-700"
+                className="p-1 hover:bg-surface-high rounded-full text-outline hover:text-on-surface"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
             <button 
               onClick={onClose}
-              className="p-1.5 hover:bg-slate-200 rounded-full text-slate-500 cursor-pointer text-xs font-bold"
+              aria-label="Cerrar búsqueda"
+              className="m3-state h-10 px-3 rounded-full text-on-surface-variant cursor-pointer text-xs font-bold"
             >
               Esc
             </button>
           </div>
 
           {/* Quick Actions Bar */}
-          <div className="p-3 border-b border-slate-100 bg-slate-100/50 flex flex-wrap gap-2 text-xs">
+          <div className="p-3 border-b border-outline-variant bg-surface-container/50 flex flex-wrap gap-2 text-xs">
             <button
               onClick={() => { onClose(); onOpenNewDebt(); }}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer shadow-2xs"
+              className="px-3 py-1.5 bg-primary hover:bg-primary text-on-primary font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer shadow-2xs"
             >
               <ClipboardList className="h-3.5 w-3.5" />
               <span>+ Nuevo Préstamo</span>
             </button>
             <button
               onClick={() => { onClose(); onNavigateTab?.('resumen'); }}
-              className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
+              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
             >
-              <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
+              <TrendingUp className="h-3.5 w-3.5 text-primary" />
               <span>Resumen</span>
             </button>
             <button
               onClick={() => { onClose(); onNavigateTab?.('deudas'); }}
-              className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
+              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
             >
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+              <DollarSign className="h-3.5 w-3.5 text-success" />
               <span>Ver Préstamos</span>
             </button>
             <button
               onClick={() => { onClose(); onNavigateTab?.('movimientos'); }}
-              className="px-3 py-1.5 bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
+              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
             >
-              <ArrowRightLeft className="h-3.5 w-3.5 text-purple-600" />
+              <ArrowRightLeft className="h-3.5 w-3.5 text-tertiary" />
               <span>Historial Abonos</span>
             </button>
           </div>
 
           {/* Search Results List */}
           <div className="max-h-[60vh] overflow-y-auto p-3 space-y-2">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 pt-1">
+            <div className="text-[11px] font-bold text-outline uppercase tracking-wider px-2 pt-1">
               {query ? `Resultados Coincidentes (${matchingDebts.length})` : 'Préstamos Recientes'}
             </div>
 
@@ -140,65 +149,65 @@ export default function QuickSearchModal({
                     onClose();
                     onOpenDetails(debt.id);
                   }}
-                  className="p-3 hover:bg-slate-50 border border-slate-200/60 rounded-2xl flex items-center justify-between transition cursor-pointer group"
+                  className="p-3 hover:bg-surface-low border border-outline-variant/60 rounded-2xl flex items-center justify-between transition cursor-pointer group"
                 >
                   <div className="flex items-center space-x-3">
-                    <div className={`p-2.5 rounded-xl shrink-0 ${debt.estado === 'pendiente' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                    <div className={`p-2.5 rounded-xl shrink-0 ${debt.estado === 'pendiente' ? 'bg-error-container text-error' : 'bg-success-container text-success'}`}>
                       {debt.estado === 'pendiente' ? <Clock className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
                     </div>
                     <div>
                       <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-slate-900 group-hover:text-blue-600 transition">
+                        <span className="font-bold text-sm text-on-surface group-hover:text-primary transition">
                           {debt.contacto}
                         </span>
-                        <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                          debt.cuenta === 'Nina' ? 'bg-slate-900 text-white' : 'bg-amber-500 text-white'
+                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          debt.cuenta === 'Nina' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-warning text-on-warning'
                         }`}>
                           {debt.cuenta}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                      <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">
                         {debt.descripcion || 'Sin nota'} • Vence: {formatMonthName(debt.mesPago)}
                       </p>
                     </div>
                   </div>
 
                   <div className="text-right shrink-0 ml-3">
-                    <span className="font-black text-sm text-slate-900 font-mono block">
+                    <span className="font-bold text-sm text-on-surface tabular-nums block">
                       {formatValue(debt.monto)}
                     </span>
-                    <span className={`text-[10px] font-bold block ${debt.saldo > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    <span className={`text-[11px] font-bold block ${debt.saldo > 0 ? 'text-error' : 'text-success'}`}>
                       {debt.saldo > 0 ? `Saldo: ${formatValue(debt.saldo)}` : 'Saldado ✓'}
                     </span>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="py-8 text-center text-slate-400 text-xs font-medium">
+              <div className="py-8 text-center text-outline text-xs font-medium">
                 No se encontraron coincidencias para "{query}".
               </div>
             )}
           </div>
 
           {/* Quick Account Switcher Footer */}
-          <div className="p-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+          <div className="p-3 border-t border-outline-variant bg-surface-low flex items-center justify-between text-xs text-on-surface-variant">
             <span className="font-medium">Filtrar vista global por:</span>
             <div className="flex items-center space-x-1 font-bold">
               <button 
                 onClick={() => { onToggleAccountView?.('Ambos'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-surface-lowest border border-outline-variant hover:bg-surface-container text-on-surface cursor-pointer"
               >
                 Ambos
               </button>
               <button 
                 onClick={() => { onToggleAccountView?.('Nina'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-slate-900 text-white cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-inverse-surface text-inverse-on-surface cursor-pointer"
               >
                 Nina
               </button>
               <button 
                 onClick={() => { onToggleAccountView?.('Nando'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-amber-500 text-white cursor-pointer"
+                className="px-2.5 py-1 rounded-full bg-warning text-on-warning cursor-pointer"
               >
                 Nando
               </button>
