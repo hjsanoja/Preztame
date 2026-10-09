@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Copy, Check, ExternalLink, HelpCircle, FileText, ChevronDown, ChevronUp,
-  AlertTriangle, Download, Upload, Sliders, ShieldAlert, User, Plus, Trash2 
+  AlertTriangle, Download, Upload, Sliders, ShieldAlert, User, Plus, Trash2,
+  Smartphone, Link2, Share, SquarePlus
 } from 'lucide-react';
 import { Debt, Payment } from '../types';
 import { formatMonthName, getOrCreateDraftToken, saveDraftToken } from '../utils/storage';
@@ -12,6 +13,8 @@ interface SetupGuideProps {
   sheetUrl: string;
   sheetToken: string;
   onSaveConnection: (url: string, token: string) => void;
+  onApplyAutoConfigLink: (link: string) => boolean;
+  pwa: { isStandalone: boolean; isIos: boolean; canInstall: boolean; onInstall: () => void };
   onClearSettings: () => void;
   isLocalMode: boolean;
   onToggleLocal: (local: boolean) => void;
@@ -28,6 +31,8 @@ export default function SetupGuide({
   sheetUrl,
   sheetToken,
   onSaveConnection,
+  onApplyAutoConfigLink,
+  pwa,
   onClearSettings,
   isLocalMode,
   onToggleLocal,
@@ -43,6 +48,7 @@ export default function SetupGuide({
   const [urlInput, setUrlInput] = useState(sheetUrl);
   const [tokenInput, setTokenInput] = useState(() => sheetToken || getOrCreateDraftToken());
   const [copiedToken, setCopiedToken] = useState(false);
+  const [linkInput, setLinkInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showFaq, setShowFaq] = useState<{ [key: string]: boolean }>({});
@@ -280,6 +286,75 @@ export default function SetupGuide({
       
       {/* Col 1: Connection form */}
       <div className="xl:col-span-1 space-y-6">
+
+        {/* Install as an app + paste auto-config link */}
+        <div className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm space-y-4">
+          <h4 className="font-bold text-[#040d53] text-[15px] flex items-center">
+            <Smartphone className="h-4 w-4 mr-2 text-blue-600" />
+            App en tu teléfono
+          </h4>
+
+          {pwa.isStandalone ? (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2.5 font-semibold flex items-center gap-2">
+              <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+              Estás usando DeudaFlow instalada. Funciona aunque no tengas conexión.
+            </p>
+          ) : pwa.canInstall ? (
+            <div className="space-y-2">
+              <p className="text-[11px] text-slate-500 leading-relaxed">Instálala para abrirla desde tu pantalla de inicio, a pantalla completa y sin conexión.</p>
+              <button
+                type="button"
+                onClick={pwa.onInstall}
+                className="w-full gemini-gradient-bg text-white font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Instalar app
+              </button>
+            </div>
+          ) : pwa.isIos ? (
+            <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-slate-600 leading-relaxed">
+              <li>Abre esta página en <strong>Safari</strong>.</li>
+              <li>Toca <Share className="inline h-3.5 w-3.5 -mt-0.5 text-blue-600" aria-label="Compartir" /> <strong>Compartir</strong>.</li>
+              <li>Elige <SquarePlus className="inline h-3.5 w-3.5 -mt-0.5" aria-hidden="true" /> <strong>Agregar a inicio</strong>.</li>
+              <li>En el iPhone la app instalada guarda sus datos aparte de Safari: ábrela y pega abajo tu link de autoconfiguración.</li>
+            </ol>
+          ) : (
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              En el teléfono, abre esta página con Chrome (Android) o Safari (iPhone) y usa <strong>"Instalar app"</strong> o <strong>"Agregar a inicio"</strong> en el menú del navegador.
+            </p>
+          )}
+
+          <form
+            className="space-y-2 border-t border-slate-100 pt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (onApplyAutoConfigLink(linkInput)) setLinkInput('');
+            }}
+          >
+            <label htmlFor="df-autoconfig-link" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              ¿Tienes un link de autoconfiguración?
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="df-autoconfig-link"
+                type="url"
+                inputMode="url"
+                placeholder="Pega aquí el link…"
+                value={linkInput}
+                onChange={(e) => setLinkInput(e.target.value)}
+                className="min-w-0 flex-1 px-3.5 py-2.5 border border-[#e2e8f0] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] transition font-mono"
+              />
+              <button
+                type="submit"
+                disabled={!linkInput.trim()}
+                className="shrink-0 px-3.5 rounded-xl bg-[#040d53] text-white text-xs font-bold disabled:opacity-40 transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Aplicar
+              </button>
+            </div>
+          </form>
+        </div>
         
         {/* Toggle Mode */}
         <div className="bg-white border border-[#e2e8f0] rounded-2xl p-6 shadow-sm space-y-4">

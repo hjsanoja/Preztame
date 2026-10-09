@@ -7,6 +7,9 @@ import {
   saveToken
 } from './utils/storage';
 import { useLedger } from './hooks/useLedger';
+import { usePwa } from './hooks/usePwa';
+import InstallBanner from './components/InstallBanner';
+import { parseAutoConfigLink } from './lib/autoConfig';
 import { newId } from './lib/ledger';
 import { roundMoney, subMoney } from './lib/money';
 import { normalizeLedger } from './lib/sheetsApi';
@@ -54,6 +57,8 @@ interface InitialConfig {
   token: string;
   user: 'Nina' | 'Nando';
   autoConfigured: boolean;
+  // Home-screen shortcut (manifest "shortcuts"): ?accion=nuevo|abono|prestamos
+  accion: string | null;
 }
 
 // Reads saved settings plus the partner auto-config link (?scriptUrl=&token=&user=).
@@ -62,6 +67,7 @@ function readInitialConfig(): InitialConfig {
   const paramUrl = params.get('scriptUrl');
   const paramToken = params.get('token');
   const paramUser = params.get('user');
+  const accion = params.get('accion');
 
   let source = getStoredSource();
   let url = getStoredSheetUrl();
@@ -82,12 +88,12 @@ function readInitialConfig(): InitialConfig {
     user = paramUser;
     localStorage.setItem('df_active_user', paramUser);
   }
-  if (paramUrl || paramToken || paramUser) {
+  if (paramUrl || paramToken || paramUser || accion) {
     // Remove the token from the address bar and browser history.
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 
-  return { source, url, token, user, autoConfigured: !!paramUrl };
+  return { source, url, token, user, autoConfigured: !!paramUrl, accion };
 }
 
 const formatUsd0 = (n: number) =>
@@ -175,8 +181,18 @@ export default function App() {
   const { deudas, pagos, clientLimits } = ledger.data;
   const syncStatus = ledger.status;
 
+  const pwa = usePwa({
+    onOfflineReady: () => showToast("DeudaFlow ya funciona sin conexión en este dispositivo.", "success")
+  });
+
   useEffect(() => {
     if (initial.autoConfigured) showToast("¡Configuración de Google Sheets autodetectada y cargada!", "success");
+    if (initial.accion === 'nuevo') setIsDebtFormOpen(true);
+    if (initial.accion === 'prestamos') setCurrentTab('deudas');
+    if (initial.accion === 'abono') {
+      setIsQuickSearchOpen(true);
+      showToast("Busca el préstamo y ábrelo para registrar el abono.", "info");
+    }
   }, [initial, showToast]);
 
   // Warm up the other tabs once the browser is idle.
@@ -264,6 +280,18 @@ export default function App() {
     setSheetToken(token);
     setIsLocalMode(false);
     showToast("Conexión guardada. Sincronizando con Google Sheets...", "info");
+  };
+
+  // For installed apps (iPhone keeps their storage apart from Safari): paste the partner link.
+  const handleApplyAutoConfigLink = (link: string): boolean => {
+    const parsed = parseAutoConfigLink(link);
+    if (!parsed) {
+      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde DeudaFlow.", "warning");
+      return false;
+    }
+    if (parsed.user) handleUserToggle(parsed.user);
+    handleSaveConnection(parsed.url, parsed.token);
+    return true;
   };
 
   const handleClearUrlSettings = () => {
@@ -397,10 +425,10 @@ export default function App() {
   };
 
   return (
-    <div className="bg-slate-50/80 text-slate-900 min-h-screen flex flex-col font-sans selection:bg-indigo-500/15 selection:text-indigo-600 pb-16 antialiased">
+    <div className="bg-slate-50/80 text-slate-900 min-h-screen flex flex-col font-sans selection:bg-indigo-500/15 selection:text-indigo-600 pb-[calc(7rem+env(safe-area-inset-bottom))] sm:pb-16 antialiased">
       
       {/* Toast notifications drawer block */}
-      <div className="fixed top-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-xs sm:max-w-sm pointer-events-none">
+      <div className="fixed top-[calc(1rem+env(safe-area-inset-top))] right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-xs sm:max-w-sm pointer-events-none">
         {toasts.map(t => {
           let styleClass = "bg-slate-900 text-white border-slate-800 shadow-xl";
           if (t.type === 'success') styleClass = "bg-emerald-900/95 border-emerald-500/30 text-emerald-100 shadow-xl shadow-emerald-950/20";
@@ -421,7 +449,7 @@ export default function App() {
       </div>
 
       {/* Main Header with Google Gemini Light Visual System */}
-      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
+      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs pt-[env(safe-area-inset-top)]">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
           <div className="flex flex-col sm:flex-row justify-between sm:h-18 items-start sm:items-center py-3.5 sm:py-0 gap-3">
             
@@ -505,7 +533,7 @@ export default function App() {
                 <span className="font-sans font-bold">
                   {syncStatus === 'synced' ? 'Sincronizado' :
                    syncStatus === 'pending' ? `Sincronizando${pendingLabel}` :
-                   syncStatus === 'error' ? (ledger.pendingCount > 0 ? `Sin conexión${pendingLabel}` : 'Error Sync ⚠️') :
+                   syncStatus === 'error' ? (ledger.pendingCount > 0 || ledger.errorCode === 'network' || ledger.errorCode === 'timeout' ? `Sin conexión${pendingLabel}` : 'Error Sync ⚠️') :
                    'Pruebas Local'}
                 </span>
               </button>
@@ -519,6 +547,13 @@ export default function App() {
       {/* Main Container Wrapper */}
       <main className="max-w-[1280px] mx-auto px-4 sm:px-8 w-full mt-6 flex-grow">
         
+        <InstallBanner
+          canInstall={pwa.canInstall}
+          isIos={pwa.isIos}
+          isStandalone={pwa.isStandalone}
+          onInstall={() => { void pwa.promptInstall(); }}
+        />
+
         {/* Global Account Select View with Gemini Styling */}
         <div id="account-view-filter-bar" className="gemini-card rounded-2xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -657,9 +692,17 @@ export default function App() {
           </>}
           {currentTab === 'config' && (
             <SetupGuide 
+              key={`${sheetUrl}|${sheetToken}`}
               sheetUrl={sheetUrl}
               sheetToken={sheetToken}
               onSaveConnection={handleSaveConnection}
+              onApplyAutoConfigLink={handleApplyAutoConfigLink}
+              pwa={{
+                isStandalone: pwa.isStandalone,
+                isIos: pwa.isIos,
+                canInstall: pwa.canInstall,
+                onInstall: () => { void pwa.promptInstall(); }
+              }}
               onClearSettings={handleClearUrlSettings}
               isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
@@ -732,7 +775,7 @@ export default function App() {
       />
 
       {/* Floating Action Button (FAB) for Mobile screens */}
-      <div className="fixed bottom-6 right-6 sm:hidden z-40 flex flex-col items-end space-y-2.5">
+      <div className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-[calc(1.5rem+env(safe-area-inset-right))] sm:hidden z-40 flex flex-col items-end space-y-2.5">
         <button
           onClick={() => setIsQuickSearchOpen(true)}
           className="bg-white text-slate-700 p-3 rounded-full shadow-lg border border-slate-200/80 flex items-center justify-center active:scale-90 transition cursor-pointer hover:bg-slate-50"
@@ -748,6 +791,31 @@ export default function App() {
           <Plus className="h-6 w-6 stroke-[2.5]" />
         </button>
       </div>
+
+      {/* New version available (service worker update) */}
+      {pwa.needRefresh && (
+        <div
+          role="status"
+          className="fixed z-50 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-sm bottom-[calc(6.5rem+env(safe-area-inset-bottom))] sm:bottom-6 bg-slate-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 animate-fade-in"
+        >
+          <Sparkles className="h-4 w-4 text-indigo-300 shrink-0" />
+          <span className="text-xs font-semibold flex-1">Hay una versión nueva de DeudaFlow.</span>
+          <button
+            type="button"
+            onClick={pwa.dismissUpdate}
+            className="text-xs font-bold text-slate-300 hover:text-white px-2 py-1 cursor-pointer"
+          >
+            Luego
+          </button>
+          <button
+            type="button"
+            onClick={pwa.updateApp}
+            className="text-xs font-bold bg-white text-slate-900 rounded-full px-3.5 py-1.5 active:scale-95 transition cursor-pointer"
+          >
+            Actualizar
+          </button>
+        </div>
+      )}
 
       {/* Custom Confirmation Dialog (Replaces native window.confirm) */}
       {confirm.isOpen && (
