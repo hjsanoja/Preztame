@@ -1,7 +1,6 @@
 import { Debt, Payment } from '../types';
-
-// Preconfigured default public script URL
-const DEFAULT_SHEETS_URL = "https://script.google.com/macros/s/AKfycbw2VcdTcdl2Avf--jI9IYVZoehaoZTmPqoxUgh_s8_xkGCELmeUp1U8f4AWqfGclV4/exec";
+import { LedgerData, QueuedOp } from '../lib/ledger';
+import { normalizeLedger } from '../lib/sheetsApi';
 
 const MOCK_DEBTS: Debt[] = [
   { id: "d-1", cuenta: "Nina", contacto: "Mamá de Nina", tipo: "favor", descripcion: "Préstamo familiar para refacciones", fecha: "2026-05-10", mesPago: "2026-06", tasaCambio: 18.25, monto: 120.00, saldo: 50.00, estado: "pendiente", creadoPor: "Nina" },
@@ -18,42 +17,94 @@ const MOCK_PAYMENTS: Payment[] = [
   { id: "p-4", fecha: "2026-05-10", deudaId: "d-5", monto: 450.00, nota: "Sin saldo pendiente", registradoPor: "Nina" }
 ];
 
+function readJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(`No se pudo guardar ${key}`, e);
+  }
+}
+
 // Helper to determine active source
 export function getStoredSource(): 'sheets' | 'local' {
   const src = localStorage.getItem("df_datasource");
   return (src === "local") ? "local" : "sheets";
 }
 
-// Get saved Sheets Apps Script Web App URL
+// Saved Sheets Apps Script Web App URL (no default: each user deploys their own)
 export function getStoredSheetUrl(): string {
-  return localStorage.getItem("df_sheet_url") || DEFAULT_SHEETS_URL;
+  return localStorage.getItem("df_sheet_url") || "";
 }
 
-// Keep a backup of data in local storage
-export function getLocalFallbackData(): { deudas: Debt[]; pagos: Payment[] } {
-  try {
-    const debtsStr = localStorage.getItem("df_local_deudas");
-    const paymentsStr = localStorage.getItem("df_local_pagos");
-    if (debtsStr && paymentsStr) {
-      return {
-        deudas: JSON.parse(debtsStr),
-        pagos: JSON.parse(paymentsStr)
-      };
-    }
-  } catch (e) {
-    console.error("Failed to parse local fallback data", e);
-  }
-  
-  // Save initial mocks
-  localStorage.setItem("df_local_deudas", JSON.stringify(MOCK_DEBTS));
-  localStorage.setItem("df_local_pagos", JSON.stringify(MOCK_PAYMENTS));
-  return { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS };
+export function getStoredToken(): string {
+  return localStorage.getItem("df_sheet_token") || "";
 }
 
-// Save local mode data changes
-export function saveLocalChanges(deudas: Debt[], pagos: Payment[]) {
-  localStorage.setItem("df_local_deudas", JSON.stringify(deudas));
-  localStorage.setItem("df_local_pagos", JSON.stringify(pagos));
+export function saveToken(token: string) {
+  localStorage.setItem("df_sheet_token", token);
+}
+
+export function generateToken(): string {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').slice(0, 32);
+}
+
+// ---------------- Local (demo) mode ----------------
+
+export function getLocalModeData(): LedgerData {
+  const deudas = readJson<Debt[]>("df_local_deudas");
+  const pagos = readJson<Payment[]>("df_local_pagos");
+  const clientLimits = readJson<Record<string, number>>("df_client_limits") || {};
+  if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits });
+
+  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {} };
+  saveLocalModeData(seeded);
+  return seeded;
+}
+
+export function saveLocalModeData(data: LedgerData) {
+  writeJson("df_local_deudas", data.deudas);
+  writeJson("df_local_pagos", data.pagos);
+  writeJson("df_client_limits", data.clientLimits);
+}
+
+// ---------------- Google Sheets mode ----------------
+// The cache and the pending-changes queue are keyed by script URL so that
+// switching to another sheet never mixes data or pushes changes to the wrong one.
+
+export interface SheetsCache {
+  data: LedgerData;
+  version: string | null;
+  syncedAt: number;
+}
+
+export function getSheetsCache(url: string): SheetsCache | null {
+  const cached = readJson<SheetsCache>(`df_cache::${url}`);
+  if (!cached || !cached.data) return null;
+  return { ...cached, data: normalizeLedger(cached.data) };
+}
+
+export function saveSheetsCache(url: string, cache: SheetsCache) {
+  writeJson(`df_cache::${url}`, cache);
+}
+
+export function getOutbox(url: string): QueuedOp[] {
+  return readJson<QueuedOp[]>(`df_outbox::${url}`) || [];
+}
+
+export function saveOutbox(url: string, ops: QueuedOp[]) {
+  if (ops.length === 0) localStorage.removeItem(`df_outbox::${url}`);
+  else writeJson(`df_outbox::${url}`, ops);
 }
 
 // Convert month string "YYYY-MM" to readable "Mes Año"

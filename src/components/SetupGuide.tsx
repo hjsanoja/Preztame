@@ -4,11 +4,14 @@ import {
   AlertTriangle, Download, Upload, Sliders, ShieldAlert, User, Plus, Trash2 
 } from 'lucide-react';
 import { Debt, Payment } from '../types';
-import { formatMonthName } from '../utils/storage';
+import { formatMonthName, generateToken } from '../utils/storage';
+import { fetchSnapshot, SheetsError, describeSheetsError } from '../lib/sheetsApi';
+import appsScriptSource from '../../apps-script/Code.gs?raw';
 
 interface SetupGuideProps {
   sheetUrl: string;
-  onSaveUrl: (url: string) => void;
+  sheetToken: string;
+  onSaveConnection: (url: string, token: string) => void;
   onClearSettings: () => void;
   isLocalMode: boolean;
   onToggleLocal: (local: boolean) => void;
@@ -23,7 +26,8 @@ interface SetupGuideProps {
 
 export default function SetupGuide({
   sheetUrl,
-  onSaveUrl,
+  sheetToken,
+  onSaveConnection,
   onClearSettings,
   isLocalMode,
   onToggleLocal,
@@ -37,6 +41,8 @@ export default function SetupGuide({
 }: SetupGuideProps) {
 
   const [urlInput, setUrlInput] = useState(sheetUrl);
+  const [tokenInput, setTokenInput] = useState(() => sheetToken || generateToken());
+  const [copiedToken, setCopiedToken] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showFaq, setShowFaq] = useState<{ [key: string]: boolean }>({});
@@ -70,41 +76,35 @@ export default function SetupGuide({
       return;
     }
 
+    if (!tokenInput.trim()) {
+      setTestResult({ status: 'error-url', message: 'Falta la clave de acceso.' });
+      return;
+    }
+
     setTestResult({ status: 'testing', message: 'Enviando petición de prueba a Google Apps Script...' });
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-      const res = await fetch(trimmed, {
-        method: 'GET',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
+      const started = performance.now();
+      const snap = await fetchSnapshot({ url: trimmed, token: tokenInput.trim() }, null, { fresh: true });
+      const ms = Math.round(performance.now() - started);
+      if (snap.kind === 'data' && !snap.version) {
         setTestResult({
           status: 'error-server',
-          message: `El servidor de Google respondió con código HTTP ${res.status}.`
+          message: 'La hoja respondió, pero con el código antiguo (v5) que no verifica la clave. Copia el código v6 de abajo y vuelve a implementar.'
         });
         return;
       }
-
-      const json = await res.json();
-      if (json && (Array.isArray(json.deudas) || typeof json === 'object')) {
-        setTestResult({
-          status: 'success',
-          message: '¡Conexión Exitosa! Tu Google Sheet está respondiendo correctamente.'
-        });
-      } else {
-        setTestResult({
-          status: 'error-server',
-          message: 'El script respondió pero los datos no coinciden. Revisa haber pegado el código completo en Apps Script.'
-        });
-      }
+      const count = snap.kind === 'data' ? `${snap.data.deudas.length} préstamos y ${snap.data.pagos.length} abonos` : 'datos';
+      setTestResult({
+        status: 'success',
+        message: `¡Conexión exitosa! Se leyeron ${count} en ${ms} ms.`
+      });
     } catch (err: any) {
       console.warn("Diagnostic test failed:", err);
+      if (err instanceof SheetsError && err.code !== 'network' && err.code !== 'timeout') {
+        setTestResult({ status: 'error-server', message: describeSheetsError(err.code) });
+        return;
+      }
       setTestResult({
         status: 'error-cors',
         message: 'Error de conexión / CORS ("Failed to fetch"). Google Apps Script requiere configuración de acceso o autorización previa.'
@@ -227,263 +227,14 @@ export default function SetupGuide({
     e.target.value = '';
   };
 
-  const appsScriptCode = `/* ====================================================================
-* CÓDIGO DE GOOGLE APPS SCRIPT - DEUDAFLOW OPTIMIZADO V5 (HÍBRIDO CACHÉ)
-* ====================================================================
-* 1. Crea una Google Sheet de Google Drive en blanco o abre tu Sheet actual.
-* 2. Ve a "Extensiones" > "Apps Script".
-* 3. Borra todo lo que esté en el editor y pega este código completo.
-* 4. Haz click en "Guardar" (icono de disquete).
-* 5. Haz click en "Implementar" > "Nueva implementación".
-*    - Tipo de implementación: Aplicación Web
-*    - Ejecutar como: "Tú" (tu cuenta de Google)
-*    - Quién tiene acceso: "Cualquiera" (Anyone) - REQUERIDO para la applet
-* 6. Copia la URL de Aplicación Web final generada (debe terminar en /exec).
-* 7. pégala en la configuración de DeudaFlow.
-* ==================================================================== */
+  // The script ships with a placeholder; the user's key is embedded on copy.
+  const appsScriptCode = appsScriptSource.replace('__DEUDAFLOW_TOKEN__', tokenInput.trim() || '__DEUDAFLOW_TOKEN__');
 
-function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet();
-  crearHojasSiNoExisten(sheet);
-  
-  var deudas = getSheetData(sheet.getSheetByName("Deudas"));
-  var pagos = getSheetData(sheet.getSheetByName("Pagos"));
-  
-  var limitesData = getSheetData(sheet.getSheetByName("Limites"));
-  var clientLimits = {};
-  limitesData.forEach(function(row) {
-    if (row.contacto) {
-      clientLimits[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
-    }
-  });
-  
-  var result = {
-    deudas: deudas,
-    pagos: pagos,
-    clientLimits: clientLimits
+  const handleCopyToken = () => {
+    navigator.clipboard.writeText(tokenInput.trim());
+    setCopiedToken(true);
+    setTimeout(() => setCopiedToken(false), 2000);
   };
-  
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(10000); // Evitar colisiones de escritura simultánea (Nina y Nando)
-  } catch (err) {
-    console.warn("Lock wait timeout, proceeding cautiously");
-  }
-
-  try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet();
-    crearHojasSiNoExisten(sheet);
-    
-    var params = JSON.parse(e.postData.contents);
-    var action = params.action;
-    
-    if (action === "addDebt") {
-      var s = sheet.getSheetByName("Deudas");
-      s.appendRow([
-        params.id,
-        params.cuenta,
-        params.contacto,
-        params.tipo,
-        params.descripcion,
-        params.fecha,
-        parseFloat(params.monto),
-        parseFloat(params.saldo),
-        params.estado,
-        params.creadoPor,
-        params.mesPago,
-        parseFloat(params.tasaCambio)
-      ]);
-    } else if (action === "addPayment") {
-      var sPagos = sheet.getSheetByName("Pagos");
-      sPagos.appendRow([
-        params.id,
-        params.fecha,
-        params.deudaId,
-        parseFloat(params.monto),
-        params.nota,
-        params.registradoPor
-      ]);
-      
-      // Actualizar saldo y estado de la deuda en 1 solo rango
-      var sDeudas = sheet.getSheetByName("Deudas");
-      var data = sDeudas.getDataRange().getValues();
-      for (var i = 1; i < data.length; i++) {
-        if (data[i][0] == params.deudaId) {
-          var nuevoSaldo = parseFloat(data[i][7]) - parseFloat(params.monto);
-          var nuevoEstado = nuevoSaldo <= 0 ? "saldado" : "pendiente";
-          sDeudas.getRange(i + 1, 8, 1, 2).setValues([[nuevoSaldo, nuevoEstado]]);
-          break;
-        }
-      }
-    } else if (action === "deleteDebt") {
-      var sDeudas = sheet.getSheetByName("Deudas");
-      var data = sDeudas.getDataRange().getValues();
-      for (var i = 1; i < data.length; i++) {
-        if (data[i][0] == params.id) {
-          sDeudas.deleteRow(i + 1);
-          break;
-        }
-      }
-      var sPagos = sheet.getSheetByName("Pagos");
-      var pData = sPagos.getDataRange().getValues();
-      for (var j = pData.length - 1; j >= 1; j--) {
-        if (pData[j][2] == params.id) {
-          sPagos.deleteRow(j + 1);
-        }
-      }
-    } else if (action === "deletePayment") {
-      var sPagos = sheet.getSheetByName("Pagos");
-      var pData = sPagos.getDataRange().getValues();
-      var deudaId = "";
-      var montoDevolver = 0;
-      
-      for (var i = 1; i < pData.length; i++) {
-        if (pData[i][0] == params.id) {
-          deudaId = pData[i][2];
-          montoDevolver = parseFloat(pData[i][3]);
-          sPagos.deleteRow(i + 1);
-          break;
-        }
-      }
-      
-      if (deudaId) {
-        var sDeudas = sheet.getSheetByName("Deudas");
-        var dData = sDeudas.getDataRange().getValues();
-        for (var i = 1; i < dData.length; i++) {
-          if (dData[i][0] == deudaId) {
-            var nuevoSaldo = parseFloat(dData[i][7]) + montoDevolver;
-            var nuevoEstado = nuevoSaldo > 0 ? "pendiente" : "saldado";
-            sDeudas.getRange(i + 1, 8, 1, 2).setValues([[nuevoSaldo, nuevoEstado]]);
-            break;
-          }
-        }
-      }
-    } else if (action === "setClientLimit") {
-      var sLimites = sheet.getSheetByName("Limites");
-      var data = sLimites.getDataRange().getValues();
-      var found = false;
-      var targetContact = params.contacto.trim();
-      var targetLimit = parseFloat(params.limite) || 0;
-      
-      for (var i = 1; i < data.length; i++) {
-        if (data[i][0].toString().toLowerCase() == targetContact.toLowerCase()) {
-          if (targetLimit <= 0) {
-            sLimites.deleteRow(i + 1);
-          } else {
-            sLimites.getRange(i + 1, 2).setValue(targetLimit);
-          }
-          found = true;
-          break;
-        }
-      }
-      if (!found && targetLimit > 0) {
-        sLimites.appendRow([targetContact, targetLimit]);
-      }
-    }
-    
-    var deudasActualizadas = getSheetData(sheet.getSheetByName("Deudas"));
-    var pagosActualizados = getSheetData(sheet.getSheetByName("Pagos"));
-    
-    var sLimitesActualizados = sheet.getSheetByName("Limites");
-    var limitesDataActualizados = getSheetData(sLimitesActualizados);
-    var clientLimitsActualizados = {};
-    limitesDataActualizados.forEach(function(row) {
-      if (row.contacto) {
-        clientLimitsActualizados[row.contacto.toString().trim()] = parseFloat(row.limite) || 0;
-      }
-    });
-    
-    var responsePayload = {
-      status: "success",
-      deudas: deudasActualizadas,
-      pagos: pagosActualizados,
-      clientLimits: clientLimitsActualizados
-    };
-    
-    return ContentService.createTextOutput(JSON.stringify(responsePayload))
-      .setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    try { lock.releaseLock(); } catch(e) {}
-  }
-}
-
-function getSheetData(sheet) {
-  var data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-  
-  var headers = data[0];
-  var list = [];
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      obj[headers[j]] = row[j];
-    }
-    list.push(obj);
-  }
-  return list;
-}
-
-function crearHojasSiNoExisten(sheet) {
-  var deudas = sheet.getSheetByName("Deudas");
-  if (!deudas) {
-    deudas = sheet.insertSheet("Deudas");
-    deudas.appendRow(["id", "cuenta", "contacto", "tipo", "descripcion", "fecha", "monto", "saldo", "estado", "creadoPor", "mesPago", "tasaCambio"]);
-  } else {
-    var range = deudas.getRange(1, 1, 1, deudas.getLastColumn());
-    var headers = range.getValues()[0];
-    var expectedHeaders = ["id", "cuenta", "contacto", "tipo", "descripcion", "fecha", "monto", "saldo", "estado", "creadoPor", "mesPago", "tasaCambio"];
-    
-    for (var i = 0; i < expectedHeaders.length; i++) {
-      if (headers.indexOf(expectedHeaders[i]) === -1) {
-        var nextCol = deudas.getLastColumn() + 1;
-        deudas.getRange(1, nextCol).setValue(expectedHeaders[i]);
-        headers.push(expectedHeaders[i]);
-      }
-    }
-  }
-  
-  var pagos = sheet.getSheetByName("Pagos");
-  if (!pagos) {
-    pagos = sheet.insertSheet("Pagos");
-    pagos.appendRow(["id", "fecha", "deudaId", "monto", "nota", "registradoPor"]);
-  } else {
-    var rangeP = pagos.getRange(1, 1, 1, pagos.getLastColumn());
-    var headersP = rangeP.getValues()[0];
-    var expectedHeadersP = ["id", "fecha", "deudaId", "monto", "nota", "registradoPor"];
-    
-    for (var j = 0; j < expectedHeadersP.length; j++) {
-      if (headersP.indexOf(expectedHeadersP[j]) === -1) {
-        var nextColP = pagos.getLastColumn() + 1;
-        pagos.getRange(1, nextColP).setValue(expectedHeadersP[j]);
-        headersP.push(expectedHeadersP[j]);
-      }
-    }
-  }
-
-  var limites = sheet.getSheetByName("Limites");
-  if (!limites) {
-    limites = sheet.insertSheet("Limites");
-    limites.appendRow(["contacto", "limite"]);
-  } else {
-    var rangeL = limites.getRange(1, 1, 1, limites.getLastColumn());
-    var headersL = rangeL.getValues()[0];
-    var expectedHeadersL = ["contacto", "limite"];
-    
-    for (var k = 0; k < expectedHeadersL.length; k++) {
-      if (headersL.indexOf(expectedHeadersL[k]) === -1) {
-        var nextColL = limites.getLastColumn() + 1;
-        limites.getRange(1, nextColL).setValue(expectedHeadersL[k]);
-        headersL.push(expectedHeadersL[k]);
-      }
-    }
-  }
-}`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(appsScriptCode);
@@ -492,12 +243,13 @@ function crearHojasSiNoExisten(sheet) {
   };
 
   const handleCopyPartnerLink = () => {
-    if (!sheetUrl) return;
+    if (!sheetUrl || !sheetToken) return;
     const currentBase = window.location.origin + window.location.pathname;
     const encodedUrl = encodeURIComponent(sheetUrl);
+    const encodedToken = encodeURIComponent(sheetToken);
     // Suggest the opposite user
     const targetUser = activeUser === 'Nina' ? 'Nando' : 'Nina';
-    const link = `${currentBase}?scriptUrl=${encodedUrl}&user=${targetUser}`;
+    const link = `${currentBase}?scriptUrl=${encodedUrl}&token=${encodedToken}&user=${targetUser}`;
     
     navigator.clipboard.writeText(link);
     setCopiedLink(true);
@@ -510,7 +262,7 @@ function crearHojasSiNoExisten(sheet) {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveUrl(urlInput.trim());
+    onSaveConnection(urlInput.trim(), tokenInput.trim());
   };
 
   return (
@@ -579,12 +331,47 @@ function crearHojasSiNoExisten(sheet) {
                 />
               </div>
 
+              <div>
+                <label htmlFor="df-token" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Clave de acceso (va dentro del Apps Script)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="df-token"
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={tokenInput}
+                    onChange={(e) => {
+                      setTokenInput(e.target.value);
+                      setTestResult({ status: 'idle' });
+                    }}
+                    className="min-w-0 flex-1 px-3.5 py-2.5 border border-[#e2e8f0] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] transition font-mono"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyToken}
+                    className="shrink-0 px-3 rounded-xl border border-[#e2e8f0] text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                    title="Copiar clave"
+                    aria-label="Copiar clave"
+                  >
+                    {copiedToken ? <Check className="h-4 w-4 text-[#2a6c00]" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                  {sheetToken
+                    ? 'Si cambias la clave, copia el código de nuevo y vuelve a implementar el script.'
+                    : 'Clave generada para ti. El código del paso 3 ya la incluye: cópialo, pégalo y vuelve a implementar.'}
+                </p>
+              </div>
+
               <div className="flex flex-col gap-2 pt-1">
                 <button
                   type="submit"
                   className="w-full bg-[#040d53] hover:opacity-90 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition active:scale-95 cursor-pointer shadow-xs"
                 >
-                  Guardar URL y Probar Conexión
+                  Guardar conexión
                 </button>
 
                 <button
@@ -804,7 +591,7 @@ function crearHojasSiNoExisten(sheet) {
               <div className="text-sm w-full space-y-2">
                 <p className="font-extrabold text-slate-800 text-[#040d53]">Reemplaza el código por este bloque mejorado</p>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Limpia todo el código existente y pega este bloque inteligente. Se encargará de crear las hojas "Deudas" y "Pagos" automáticamente en tu libro al guardar el primer registro.
+                  Limpia todo el código existente y pega este bloque (v6). Ya incluye tu clave de acceso, crea las hojas "Deudas", "Pagos" y "Limites" si no existen, y guarda una caché para que la app cargue mucho más rápido.
                 </p>
                 
                 {/* Apps Script Code editor display box */}
@@ -840,10 +627,12 @@ function crearHojasSiNoExisten(sheet) {
               <div className="text-sm">
                 <p className="font-extrabold text-slate-800 font-sans">Guarda, Publica y Copia la URL</p>
                 <p className="text-xs text-slate-500 leading-relaxed mt-0.5">
-                  Haz click en el icono de disquete para guardar. Luego presiona <strong>Implementar &gt; Nueva implementación</strong>.<br />
+                  Haz click en el icono de disquete para guardar.<br />
+                  <strong>Si ya tenías el script publicado:</strong> ve a <strong>Implementar &gt; Administrar implementaciones</strong>, pulsa ✏️ <strong>Editar</strong>, elige <strong>Versión: Nueva versión</strong> e implementa. Así conservas la misma URL.<br />
+                  <strong>Si es la primera vez:</strong> presiona <strong>Implementar &gt; Nueva implementación</strong>.<br />
                   - Tipo de implementación: Selecciona <strong>Aplicación Web</strong>.<br />
                   - Ejecutar como: <strong>Tú</strong> (tu correo).<br />
-                  - Quién tiene acceso: Selecciona <strong>Cualquiera</strong> para que Nina o Nando sincronicen a la vez.<br />
+                  - Quién tiene acceso: Selecciona <strong>Cualquiera</strong>. Tus datos quedan protegidos por la clave de acceso: sin ella el script no responde.<br />
                   Haz click en Implementar, dale los permisos necesarios de tu cuenta (esta acción es completamente segura) y copia la URL final para guardarla en el formulario de la izquierda.
                 </p>
               </div>
@@ -869,7 +658,7 @@ function crearHojasSiNoExisten(sheet) {
               </button>
               {showFaq['faq1'] && (
                 <div className="p-3 text-slate-500 leading-relaxed border-t border-slate-100 bg-white">
-                  ¡Completamente seguro! El código se ejecuta directamente en los servidores de tu Google Drive. Los datos nunca pasan por terceros: van directamente de tu navegador a tus servidores de Google de forma transparente. El código fuente es transparente e inspeccionable.
+                  Sí. El código se ejecuta en tu propia cuenta de Google y los datos van directo de tu navegador a tu hoja, sin pasar por terceros. Aunque el acceso esté en "Cualquiera", el script solo responde a quien tenga tu clave de acceso: sin ella no se puede leer ni modificar nada. Comparte la clave (o el link de autoconfiguración) solo con quien deba usar la app, y si sospechas que se filtró, genera una nueva, copia el código y vuelve a implementar.
                 </div>
               )}
             </div>

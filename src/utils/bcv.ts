@@ -1,66 +1,35 @@
 /**
- * Utility to fetch the official BCV (Banco Central de Venezuela) exchange rate (USD to VES)
- * using our secure server-side API proxy to avoid CORS restrictions, with local client-side fallbacks.
+ * Official BCV (Banco Central de Venezuela) USD → VES exchange rate.
+ *
+ * The app is hosted as static files (GitHub Pages), so there is no server
+ * proxy. We try DolarAPI directly from the browser first and fall back to the
+ * user's own Apps Script (`?action=bcv`), which fetches it server-side.
  */
+import { fetchBcvFromScript } from '../lib/sheetsApi';
+import { getStoredSheetUrl, getStoredToken } from './storage';
 
-export async function fetchBCVExchangeRate(): Promise<number | null> {
-  // Primary attempt: Use our server-side proxy which does not suffer from CORS
+async function fetchDolarApi(): Promise<number | null> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 6000);
   try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch('/api/bcv', {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'Cache-Control': 'no-cache'
-      }
-    });
-
-    clearTimeout(id);
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.success && data?.rate) {
-        const rate = parseFloat(data.rate);
-        if (!isNaN(rate) && rate > 0) {
-          console.log(`Successfully fetched BCV rate from server-side proxy: ${rate}`);
-          return rate;
-        }
-      }
-    }
-  } catch (error) {
-    console.warn("Server proxy BCV fetch failed, trying direct fallback...", error);
-  }
-
-  // Fallback 1: Direct client-side call to DolarAPI (may fail due to CORS in some clients)
-  try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 5000);
-
     const response = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', {
       signal: controller.signal,
-      headers: {
-        'Accept': 'application/json'
-      }
+      headers: { Accept: 'application/json' }
     });
-
-    clearTimeout(id);
-
-    if (response.ok) {
-      const data = await response.json();
-      const rate = data?.promedio || data?.venta || data?.compra;
-      if (rate) {
-        const num = parseFloat(rate);
-        if (!isNaN(num) && num > 0) {
-          console.log(`Successfully fetched BCV rate from client-side fallback: ${num}`);
-          return num;
-        }
-      }
-    }
+    if (!response.ok) return null;
+    const data = await response.json();
+    const rate = parseFloat(data?.promedio || data?.venta || data?.compra);
+    return rate > 0 ? rate : null;
   } catch (error) {
-    console.warn("Client-side direct BCV fallback failed:", error);
+    console.warn('DolarAPI BCV fetch failed:', error);
+    return null;
+  } finally {
+    clearTimeout(id);
   }
+}
 
-  return null;
+export async function fetchBCVExchangeRate(): Promise<number | null> {
+  const direct = await fetchDolarApi();
+  if (direct) return direct;
+  return fetchBcvFromScript({ url: getStoredSheetUrl(), token: getStoredToken() });
 }

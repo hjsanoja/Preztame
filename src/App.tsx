@@ -1,41 +1,39 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import confetti from 'canvas-confetti';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { Debt, Payment } from './types';
-import { 
-  getStoredSource, 
-  getStoredSheetUrl, 
-  getLocalFallbackData, 
-  saveLocalChanges 
+import {
+  getStoredSource,
+  getStoredSheetUrl,
+  getStoredToken,
+  saveToken
 } from './utils/storage';
-import Dashboard from './components/Dashboard';
-import DebtsList from './components/DebtsList';
-import TransactionsHistory from './components/TransactionsHistory';
-import SetupGuide from './components/SetupGuide';
+import { useLedger } from './hooks/useLedger';
+import { newId } from './lib/ledger';
+import { roundMoney, subMoney } from './lib/money';
+import { normalizeLedger } from './lib/sheetsApi';
 
-// Modals
+// Modals (small, used on every tab)
 import DebtDetailsModal from './components/DebtDetailsModal';
 import DebtFormModal from './components/DebtFormModal';
 import AbonoFormModal from './components/AbonoFormModal';
 import QuickSearchModal from './components/QuickSearchModal';
 
 // Icons
-import { 
-  DollarSign, 
-  Settings, 
-  Layers, 
-  TrendingUp, 
-  CheckCircle,
-  HelpCircle,
-  Clock,
+import {
   Sparkles,
-  Wifi,
-  WifiOff,
   Keyboard,
-  User,
-  ArrowRightLeft,
   Search,
   Plus
 } from 'lucide-react';
+
+// Tabs are loaded on demand so the first paint does not wait for charts.
+const loadDashboard = () => import('./components/Dashboard');
+const loadDebtsList = () => import('./components/DebtsList');
+const loadHistory = () => import('./components/TransactionsHistory');
+const loadSetupGuide = () => import('./components/SetupGuide');
+const Dashboard = lazy(loadDashboard);
+const DebtsList = lazy(loadDebtsList);
+const TransactionsHistory = lazy(loadHistory);
+const SetupGuide = lazy(loadSetupGuide);
 
 interface Toast {
   id: string;
@@ -50,23 +48,78 @@ interface ConfirmConfig {
   onConfirm: () => void;
 }
 
+interface InitialConfig {
+  source: 'sheets' | 'local';
+  url: string;
+  token: string;
+  user: 'Nina' | 'Nando';
+  autoConfigured: boolean;
+}
+
+// Reads saved settings plus the partner auto-config link (?scriptUrl=&token=&user=).
+function readInitialConfig(): InitialConfig {
+  const params = new URLSearchParams(window.location.search);
+  const paramUrl = params.get('scriptUrl');
+  const paramToken = params.get('token');
+  const paramUser = params.get('user');
+
+  let source = getStoredSource();
+  let url = getStoredSheetUrl();
+  let token = getStoredToken();
+  let user: 'Nina' | 'Nando' = localStorage.getItem('df_active_user') === 'Nando' ? 'Nando' : 'Nina';
+
+  if (paramUrl) {
+    url = paramUrl;
+    source = 'sheets';
+    localStorage.setItem('df_sheet_url', url);
+    localStorage.setItem('df_datasource', 'sheets');
+  }
+  if (paramToken) {
+    token = paramToken;
+    saveToken(token);
+  }
+  if (paramUser === 'Nina' || paramUser === 'Nando') {
+    user = paramUser;
+    localStorage.setItem('df_active_user', paramUser);
+  }
+  if (paramUrl || paramToken || paramUser) {
+    // Remove the token from the address bar and browser history.
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  return { source, url, token, user, autoConfigured: !!paramUrl };
+}
+
+const formatUsd0 = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(n);
+
+function TabFallback() {
+  return (
+    <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="Cargando">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl bg-slate-200/70" />)}
+      </div>
+      <div className="h-64 rounded-2xl bg-slate-200/60" />
+    </div>
+  );
+}
+
 export default function App() {
+  const [initial] = useState(readInitialConfig);
+
   // Navigation Tabs: 'resumen' | 'deudas' | 'movimientos' | 'config'
   const [currentTab, setCurrentTab] = useState<'resumen' | 'deudas' | 'movimientos' | 'config'>('resumen');
 
-  // Core Data States
-  const [deudas, setDeudas] = useState<Debt[]>([]);
-  const [pagos, setPagos] = useState<Payment[]>([]);
-  const [activeUser, setActiveUser] = useState<'Nina' | 'Nando'>('Nina');
-  const [accountView, setAccountView] = useState<'Ambos' | 'Nina' | 'Nando'>('Ambos');
-  
+  const [activeUser, setActiveUser] = useState<'Nina' | 'Nando'>(initial.user);
+  const [accountView, setAccountView] = useState<'Ambos' | 'Nina' | 'Nando'>(() => {
+    const saved = localStorage.getItem("df_account_view");
+    return saved === 'Nina' || saved === 'Nando' ? saved : 'Ambos';
+  });
+
   // Configuration Settings
-  const [isLocalMode, setIsLocalMode] = useState<boolean>(true);
-  const [sheetUrl, setSheetUrl] = useState<string>('');
-  
-  // Loader & Sinc Status variables
-  const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'error' | 'pending' | 'local'>('local');
+  const [isLocalMode, setIsLocalMode] = useState<boolean>(initial.source === 'local');
+  const [sheetUrl, setSheetUrl] = useState<string>(initial.url);
+  const [sheetToken, setSheetToken] = useState<string>(initial.token);
 
   // UI Modals triggers states
   const [selectedDetailsId, setSelectedDetailsId] = useState<string | null>(null);
@@ -74,16 +127,6 @@ export default function App() {
   const [isAbonoFormOpen, setIsAbonoFormOpen] = useState(false);
   const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
   const [abonoDebtId, setAbonoDebtId] = useState<string | null>(null);
-
-  // Client credit limits state
-  const [clientLimits, setClientLimits] = useState<Record<string, number>>(() => {
-    try {
-      const saved = localStorage.getItem("df_client_limits");
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
 
   // Custom UI elements (Toast and Confirm boxes)
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -100,7 +143,7 @@ export default function App() {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
+    }, type === 'error' || type === 'warning' ? 5000 : 3000);
   }, []);
 
   // Display confirmation modal
@@ -116,135 +159,37 @@ export default function App() {
     });
   }, []);
 
-  // Fetch / Load data fully compiled based on sync source (Option A: Instant Local Cache First)
-  const loadData = useCallback(async (source: 'local' | 'sheets', currentUrl: string) => {
-    // 1. Instant zero-latency load from local storage cache
-    const fallback = getLocalFallbackData();
-    setDeudas(fallback.deudas);
-    setPagos(fallback.pagos);
-
-    if (source === 'local') {
-      setSyncStatus('local');
-      return;
+  // Data + Google Sheets sync engine (instant cache, offline queue, batched writes)
+  const ledger = useLedger({
+    mode: isLocalMode ? 'local' : 'sheets',
+    url: sheetUrl,
+    token: sheetToken,
+    onSyncError: (message, code) => {
+      const pending = code === 'network' || code === 'timeout' || code === 'busy' || code === 'http';
+      showToast(pending ? `${message} Tus cambios quedan guardados y se enviarán al reconectar.` : message, pending ? 'warning' : 'error');
+    },
+    onOpsRejected: (count, firstError) => {
+      showToast(`Google Sheets rechazó ${count} cambio(s): ${firstError}`, 'error');
     }
+  });
+  const { deudas, pagos, clientLimits } = ledger.data;
+  const syncStatus = ledger.status;
 
-    if (!currentUrl) {
-      setSyncStatus('error');
-      showToast("Seleccionaste Google Sheets pero no tienes una URL configurada. Abre 'Configuración' para fijarla.", "warning");
-      return;
-    }
-
-    setIsSyncing(true);
-    setSyncStatus('pending');
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
-
-      const response = await fetch(currentUrl, {
-        method: 'GET',
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Server responded with status ${response.status}`);
-      }
-
-      const resJson = await response.json();
-      
-      const parsedDeudas: Debt[] = (resJson.deudas || []).map((d: any) => ({
-        id: String(d.id),
-        cuenta: d.cuenta === 'Nando' ? 'Nando' : 'Nina',
-        contacto: String(d.contacto || 'Desconocido'),
-        tipo: String(d.tipo || 'favor'),
-        descripcion: String(d.descripcion || ''),
-        fecha: d.fecha ? d.fecha.split('T')[0] : '',
-        mesPago: String(d.mesPago || ''),
-        tasaCambio: parseFloat(d.tasaCambio) || 1.0,
-        monto: parseFloat(d.monto) || 0,
-        saldo: parseFloat(d.saldo) || 0,
-        estado: d.estado === 'saldado' ? 'saldado' : 'pendiente',
-        creadoPor: String(d.creadoPor || 'Nina')
-      }));
-
-      const parsedPagos: Payment[] = (resJson.pagos || []).map((p: any) => ({
-        id: String(p.id),
-        fecha: p.fecha ? p.fecha.split('T')[0] : '',
-        deudaId: String(p.deudaId),
-        monto: parseFloat(p.monto) || 0,
-        nota: String(p.nota || ''),
-        registradoPor: String(p.registradoPor || 'Nina')
-      }));
-
-      setDeudas(parsedDeudas);
-      setPagos(parsedPagos);
-      saveLocalChanges(parsedDeudas, parsedPagos);
-
-      if (resJson.clientLimits) {
-        const parsedLimits: Record<string, number> = {};
-        Object.entries(resJson.clientLimits).forEach(([k, v]) => {
-          parsedLimits[k] = parseFloat(v as any) || 0;
-        });
-        setClientLimits(parsedLimits);
-        localStorage.setItem("df_client_limits", JSON.stringify(parsedLimits));
-      }
-
-      setSyncStatus('synced');
-    } catch (err) {
-      console.warn("Sin conexión con Google Sheets, usando respaldo local:", err);
-      setSyncStatus('error');
-      showToast("Sin conexión con Google Sheets. Usando copia local en caché.", "warning");
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [showToast]);
-
-  // Initial loads and param captures
   useEffect(() => {
-    // 1. Capture dynamic autoconfig search parameters
-    const params = new URLSearchParams(window.location.search);
-    const paramUrl = params.get('scriptUrl');
-    const paramUser = params.get('user');
+    if (initial.autoConfigured) showToast("¡Configuración de Google Sheets autodetectada y cargada!", "success");
+  }, [initial, showToast]);
 
-    let initialSource: 'sheets' | 'local' = getStoredSource();
-    let initialUrl: string = getStoredSheetUrl();
-    let initialUser: 'Nina' | 'Nando' = 'Nina';
-
-    if (paramUrl) {
-      const decoded = decodeURIComponent(paramUrl);
-      localStorage.setItem("df_sheet_url", decoded);
-      localStorage.setItem("df_datasource", "sheets");
-      initialUrl = decoded;
-      initialSource = 'sheets';
-      showToast("¡Configuración de Google Sheets autodetectada y cargada!", "success");
-      
-      // Clean query parameters from URL quietly
-      window.history.replaceState({}, document.title, window.location.pathname);
+  // Warm up the other tabs once the browser is idle.
+  useEffect(() => {
+    const prefetch = () => { loadDashboard(); loadDebtsList(); loadHistory(); loadSetupGuide(); };
+    const w = window as any;
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(prefetch, { timeout: 4000 });
+      return () => w.cancelIdleCallback?.(id);
     }
-
-    if (paramUser && (paramUser === 'Nina' || paramUser === 'Nando')) {
-      initialUser = paramUser;
-      localStorage.setItem("df_active_user", paramUser);
-    } else {
-      const savedUser = localStorage.getItem("df_active_user");
-      if (savedUser === 'Nando' || savedUser === 'Nina') {
-        initialUser = savedUser;
-      }
-    }
-
-    const savedView = localStorage.getItem("df_account_view");
-    if (savedView === 'Ambos' || savedView === 'Nina' || savedView === 'Nando') {
-      setAccountView(savedView);
-    }
-
-    setIsLocalMode(initialSource === 'local');
-    setSheetUrl(initialUrl);
-    setActiveUser(initialUser);
-
-    loadData(initialSource, initialUrl);
-  }, [loadData, showToast]);
+    const t = setTimeout(prefetch, 2000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Global Keyboard shortcuts handling
   useEffect(() => {
@@ -256,20 +201,21 @@ export default function App() {
         return;
       }
 
-      const isEditing = document.activeElement?.tagName === 'INPUT' || 
-                        document.activeElement?.tagName === 'TEXTAREA' || 
-                        document.activeElement?.tagName === 'SELECT';
-      
-      if (isEditing) return;
-
-      // Modal universal close
+      // Modal universal close (also while typing inside a form)
       if (e.key === "Escape") {
         setIsDebtFormOpen(false);
         setIsAbonoFormOpen(false);
         setIsQuickSearchOpen(false);
         setSelectedDetailsId(null);
         setConfirm(prev => ({ ...prev, isOpen: false }));
+        return;
       }
+
+      const isEditing = document.activeElement?.tagName === 'INPUT' ||
+                        document.activeElement?.tagName === 'TEXTAREA' ||
+                        document.activeElement?.tagName === 'SELECT';
+
+      if (isEditing || e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Quick tab swaps 1-4
       if (e.key === "1") { e.preventDefault(); setCurrentTab('resumen'); }
@@ -300,20 +246,24 @@ export default function App() {
     localStorage.setItem("df_account_view", view);
   };
 
-  // Save new Sheet integration endpoints
-  const handleSaveSheetUrl = async (url: string) => {
+  // Save new Sheet integration endpoint + access key
+  const handleSaveConnection = (url: string, token: string) => {
     if (url.includes("/edit")) {
       showToast("Has copiado la URL de edición del navegador. Copia la URL de Aplicación Web publicada que termina en /exec", "warning");
       return;
     }
+    if (!token) {
+      showToast("Falta la clave de acceso. Genérala en Configuración y pégala también en tu Apps Script.", "warning");
+      return;
+    }
 
-    setSheetUrl(url);
     localStorage.setItem("df_sheet_url", url);
-    setIsLocalMode(false);
     localStorage.setItem("df_datasource", "sheets");
-    
-    showToast("URL de Google Sheets guardada. Conectando...", "info");
-    await loadData('sheets', url);
+    saveToken(token);
+    setSheetUrl(url);
+    setSheetToken(token);
+    setIsLocalMode(false);
+    showToast("Conexión guardada. Sincronizando con Google Sheets...", "info");
   };
 
   const handleClearUrlSettings = () => {
@@ -322,215 +272,69 @@ export default function App() {
     setIsLocalMode(true);
     localStorage.setItem("df_datasource", "local");
     showToast("Conexión de Google Sheets removida. Volviendo a prueba local.", "info");
-    loadData('local', '');
   };
 
   const handleToggleLocalMode = (local: boolean) => {
     setIsLocalMode(local);
     localStorage.setItem("df_datasource", local ? "local" : "sheets");
     showToast(local ? "Prueba sin conexión local activada." : "Entrando a modo sincronización permanente Sheets.", "info");
-    loadData(local ? 'local' : 'sheets', sheetUrl);
   };
 
-  // Set client credit limits and save to local storage
-  const handleSetClientLimit = async (contacto: string, limit: number) => {
-    // OPTIMISTIC UPDATE
-    setClientLimits(prev => {
-      const updated = { ...prev };
-      if (limit <= 0) {
-        delete updated[contacto];
-      } else {
-        updated[contacto] = limit;
-      }
-      localStorage.setItem("df_client_limits", JSON.stringify(updated));
-      return updated;
-    });
-
+  // Set client credit limits
+  const handleSetClientLimit = (contacto: string, limit: number) => {
+    ledger.dispatch({ action: 'setClientLimit', contacto, limite: limit });
     if (limit <= 0) {
       showToast(`Límite de crédito removido para ${contacto}.`, "success");
     } else {
       showToast(`Límite de crédito de $${limit} asignado para ${contacto}.`, "success");
     }
+  };
 
-    if (!isLocalMode && sheetUrl) {
-      try {
-        const payload = {
-          action: "setClientLimit",
-          contacto,
-          limite: limit
-        };
-
-        const res = await fetch(sheetUrl, {
-          method: 'POST',
-          mode: 'cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.clientLimits) {
-            const parsedLimits: Record<string, number> = {};
-            Object.entries(data.clientLimits).forEach(([k, v]) => {
-              parsedLimits[k] = parseFloat(v as any) || 0;
-            });
-            setClientLimits(parsedLimits);
-            localStorage.setItem("df_client_limits", JSON.stringify(parsedLimits));
-          }
-        }
-      } catch (err) {
-        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
-        showToast("No se pudo sincronizar el límite en Google Sheets. Se guardó localmente por ahora.", "warning");
-      }
+  // Restore imported backup data (local mode only: Sheets is the source of truth)
+  const handleImportBackup = (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => {
+    const ok = ledger.replaceLocalData(normalizeLedger({ deudas: importedDeudas, pagos: importedPagos, clientLimits: importedLimits }));
+    if (ok) {
+      showToast("¡Copia de seguridad importada con éxito!", "success");
+    } else {
+      showToast("Para no sobrescribir tu Google Sheet, importar respaldos solo está disponible en modo Prueba Local.", "warning");
     }
   };
 
-  // Restore imported backup data locally
-  const handleImportBackup = (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => {
-    setDeudas(importedDeudas);
-    setPagos(importedPagos);
-    setClientLimits(importedLimits);
-
-    // Save changes using storage manager utilities
-    saveLocalChanges(importedDeudas, importedPagos);
-    localStorage.setItem("df_client_limits", JSON.stringify(importedLimits));
-
-    showToast("¡Copia de seguridad importada con éxito!", "success");
-  };
-
-  // ================= ACTION DISPATCHERS WITH OPTIMISTIC CODES =================
+  // ================= ACTIONS (applied instantly, synced in background) =================
 
   // 1. ADD NEW LOAN
-  const handleAddDebt = async (debtPayload: Omit<Debt, 'id' | 'saldo' | 'estado' | 'creadoPor'>) => {
-    const newId = "d-" + Date.now().toString() + Math.random().toString().slice(2,6);
+  const handleAddDebt = (debtPayload: Omit<Debt, 'id' | 'saldo' | 'estado' | 'creadoPor'>) => {
+    const monto = roundMoney(debtPayload.monto);
     const newDebt: Debt = {
-      id: newId,
       ...debtPayload,
-      saldo: debtPayload.monto,
+      id: newId('d'),
+      monto,
+      saldo: monto,
       estado: 'pendiente',
       creadoPor: activeUser
     };
-
-    // OPTIMISTIC LOCAL STATE UPDATE - Instant UI & Local Storage cache update
-    const updatedDeudas = [newDebt, ...deudas];
-    setDeudas(updatedDeudas);
-    saveLocalChanges(updatedDeudas, pagos);
+    ledger.dispatch({ action: 'addDebt', debt: newDebt });
     showToast("Préstamo registrado.", "success");
-
-    if (!isLocalMode && sheetUrl) {
-      setSyncStatus('pending');
-      try {
-        const payload = {
-          action: "addDebt",
-          ...newDebt
-        };
-
-        const res = await fetch(sheetUrl, {
-          method: 'POST',
-          mode: 'cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!res.ok) throw new Error();
-
-        const data = await res.json();
-        if (data && data.deudas) {
-          const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
-          const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
-          setDeudas(freshDeudas);
-          setPagos(freshPagos);
-          saveLocalChanges(freshDeudas, freshPagos);
-          setSyncStatus('synced');
-        }
-      } catch (err) {
-        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
-        setSyncStatus('error');
-        showToast("Guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
-      }
-    }
   };
 
   // 2. ADD PAYMENT REPAYMENT ABONO
-  const handleAddPayment = async (payPayload: Omit<Payment, 'id' | 'registradoPor'>) => {
-    const newId = "p-" + Date.now().toString() + Math.random().toString().slice(2,6);
+  const handleAddPayment = (payPayload: Omit<Payment, 'id' | 'registradoPor'>) => {
+    const target = deudas.find(d => d.id === payPayload.deudaId);
     const newPayment: Payment = {
-      id: newId,
       ...payPayload,
+      id: newId('p'),
+      monto: roundMoney(payPayload.monto),
       registradoPor: activeUser
     };
+    ledger.dispatch({ action: 'addPayment', payment: newPayment });
 
-    // OPTIMISTIC UPGRADES
-    let isFullySettled = false;
-    let targetContact = '';
-
-    const updatedDeudas = deudas.map(d => {
-      if (d.id === payPayload.deudaId) {
-        const nextSaldo = parseFloat((d.saldo - payPayload.monto).toFixed(2));
-        if (nextSaldo <= 0) {
-          isFullySettled = true;
-          targetContact = d.contacto;
-        }
-        return {
-          ...d,
-          saldo: Math.max(0, nextSaldo),
-          estado: (nextSaldo <= 0 ? 'saldado' : 'pendiente') as 'saldado' | 'pendiente'
-        };
-      }
-      return d;
-    });
-    const updatedPagos = [newPayment, ...pagos];
-
-    setDeudas(updatedDeudas);
-    setPagos(updatedPagos);
-    saveLocalChanges(updatedDeudas, updatedPagos);
-
-    if (isFullySettled) {
-      try {
-        confetti({
-          particleCount: 120,
-          spread: 80,
-          origin: { y: 0.6 }
-        });
-      } catch (e) {
-        console.error("Confetti launch failed", e);
-      }
-      showToast(`🎉 ¡DEUDA SALDADA! ${targetContact} ha pagado su préstamo por completo.`, "success");
+    if (target && subMoney(target.saldo, newPayment.monto) <= 0) {
+      import('canvas-confetti')
+        .then(({ default: confetti }) => confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } }))
+        .catch(e => console.error("Confetti launch failed", e));
+      showToast(`🎉 ¡DEUDA SALDADA! ${target.contacto} ha pagado su préstamo por completo.`, "success");
     } else {
       showToast("Abono registrado.", "success");
-    }
-
-    if (!isLocalMode && sheetUrl) {
-      setSyncStatus('pending');
-      try {
-        const payload = {
-          action: "addPayment",
-          ...newPayment
-        };
-
-        const res = await fetch(sheetUrl, {
-          method: 'POST',
-          mode: 'cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(payload)
-        });
-
-        if (!res.ok) throw new Error();
-
-        const data = await res.json();
-        if (data && data.deudas) {
-          const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
-          const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
-          setDeudas(freshDeudas);
-          setPagos(freshPagos);
-          saveLocalChanges(freshDeudas, freshPagos);
-          setSyncStatus('synced');
-        }
-      } catch (err) {
-        console.warn("Cloud sync warning (Google Sheets no disponible):", err);
-        setSyncStatus('error');
-        showToast("Abono guardado localmente. Se sincronizará con Google Sheets al reconectar.", "warning");
-      }
     }
   };
 
@@ -541,44 +345,11 @@ export default function App() {
 
     askConfirmation(
       "¿Eliminar Préstamo Completo?",
-      `Estás a punto de borrar el préstamo registrado a "${target.contacto}" por ${new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits: 0, minimumFractionDigits: 0}).format(target.monto)}. Esta acción también anula todos sus abonos asociados. ¿Deseas continuar?`,
-      async () => {
-        const updatedDeudas = deudas.filter(d => d.id !== id);
-        const updatedPagos = pagos.filter(p => p.deudaId !== id);
-
-        setDeudas(updatedDeudas);
-        setPagos(updatedPagos);
-        saveLocalChanges(updatedDeudas, updatedPagos);
-        if (selectedDetailsId === id) setSelectedDetailsId(null);
+      `Estás a punto de borrar el préstamo registrado a "${target.contacto}" por ${formatUsd0(target.monto)}. Esta acción también anula todos sus abonos asociados. ¿Deseas continuar?`,
+      () => {
+        ledger.dispatch({ action: 'deleteDebt', id });
+        setSelectedDetailsId(prev => (prev === id ? null : prev));
         showToast("Préstamo eliminado.", "info");
-
-        if (!isLocalMode && sheetUrl) {
-          setSyncStatus('pending');
-          try {
-            const res = await fetch(sheetUrl, {
-              method: 'POST',
-              mode: 'cors',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ action: "deleteDebt", id })
-            });
-
-            if (!res.ok) throw new Error();
-
-            const data = await res.json();
-            if (data && data.deudas) {
-              const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
-              const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
-              setDeudas(freshDeudas);
-              setPagos(freshPagos);
-              saveLocalChanges(freshDeudas, freshPagos);
-              setSyncStatus('synced');
-            }
-          } catch (err) {
-            console.warn("Cloud sync warning (Google Sheets no disponible):", err);
-            setSyncStatus('error');
-            showToast("Baja registrada en el navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
-          }
-        }
       }
     );
   };
@@ -590,53 +361,10 @@ export default function App() {
 
     askConfirmation(
       "¿Anular este Abono?",
-      `Estás por deshacer el abono por valor de ${new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits: 0, minimumFractionDigits: 0}).format(target.monto)}. El saldo pendiente de la deuda se incrementará de nuevo.`,
-      async () => {
-        const updatedDeudas = deudas.map(d => {
-          if (d.id === target.deudaId) {
-            const nextSaldo = parseFloat((d.saldo + target.monto).toFixed(2));
-            return {
-              ...d,
-              saldo: nextSaldo,
-              estado: 'pendiente' as 'pendiente'
-            };
-          }
-          return d;
-        });
-        const updatedPagos = pagos.filter(p => p.id !== id);
-
-        setDeudas(updatedDeudas);
-        setPagos(updatedPagos);
-        saveLocalChanges(updatedDeudas, updatedPagos);
+      `Estás por deshacer el abono por valor de ${formatUsd0(target.monto)}. El saldo pendiente de la deuda se incrementará de nuevo.`,
+      () => {
+        ledger.dispatch({ action: 'deletePayment', id });
         showToast("Abono anulado.", "info");
-
-        if (!isLocalMode && sheetUrl) {
-          setSyncStatus('pending');
-          try {
-            const res = await fetch(sheetUrl, {
-              method: 'POST',
-              mode: 'cors',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              body: JSON.stringify({ action: "deletePayment", id })
-            });
-
-            if (!res.ok) throw new Error();
-
-            const data = await res.json();
-            if (data && data.deudas) {
-              const freshDeudas = data.deudas.map((d: any) => ({ ...d, monto: parseFloat(d.monto), saldo: parseFloat(d.saldo), tasaCambio: parseFloat(d.tasaCambio) }));
-              const freshPagos = data.pagos.map((p: any) => ({ ...p, monto: parseFloat(p.monto) }));
-              setDeudas(freshDeudas);
-              setPagos(freshPagos);
-              saveLocalChanges(freshDeudas, freshPagos);
-              setSyncStatus('synced');
-            }
-          } catch (err) {
-            console.warn("Cloud sync warning (Google Sheets no disponible):", err);
-            setSyncStatus('error');
-            showToast("Anulación guardada en navegador. Se sincronizará con Google Sheets al reconectar.", "warning");
-          }
-        }
       }
     );
   };
@@ -646,11 +374,26 @@ export default function App() {
     setIsAbonoFormOpen(true);
   };
 
+  const pendingLabel = ledger.pendingCount > 0 ? ` · ${ledger.pendingCount} pendiente${ledger.pendingCount === 1 ? '' : 's'}` : '';
+
   const syncTooltipMsg = () => {
     if (syncStatus === 'local') return 'Modo Local (Pruebas sin Drive)';
-    if (syncStatus === 'synced') return 'Sincronizado con Google Sheets';
+    if (syncStatus === 'synced') {
+      const when = ledger.lastSyncedAt ? new Date(ledger.lastSyncedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '';
+      return `Sincronizado con Google Sheets${when ? ` a las ${when}` : ''}. Toca para actualizar.`;
+    }
     if (syncStatus === 'pending') return 'Sincronizando...';
-    return 'Error de Conexión. Haz clic para revisar guía.';
+    return `${ledger.errorMessage || 'Error de conexión.'} Toca para revisar la configuración.`;
+  };
+
+  const handleSyncBadgeClick = () => {
+    if (syncStatus === 'error' && (ledger.errorCode === 'unauthorized' || ledger.errorCode === 'outdated-script' || ledger.errorCode === 'not-configured')) {
+      setCurrentTab('config');
+      return;
+    }
+    if (syncStatus !== 'local' && syncStatus !== 'pending') {
+      void ledger.sync({ fresh: syncStatus === 'synced' });
+    }
   };
 
   return (
@@ -741,17 +484,14 @@ export default function App() {
               </div>
 
               {/* Drive sync status beacon */}
-              <div 
-                onClick={() => {
-                  if (syncStatus === 'error') {
-                    setCurrentTab('config');
-                    showToast("Abriendo guía de configuración paso a paso.", "info");
-                  }
-                }}
-                className={`flex items-center space-x-2 border px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition ${
-                  syncStatus === 'synced' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800' :
+              <button
+                type="button"
+                onClick={handleSyncBadgeClick}
+                aria-live="polite"
+                className={`flex items-center space-x-2 border px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition cursor-pointer ${
+                  syncStatus === 'synced' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800 hover:bg-emerald-100' :
                   syncStatus === 'pending' ? 'bg-blue-50/80 border-blue-200 text-blue-900' :
-                  syncStatus === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800 cursor-pointer hover:bg-rose-100' :
+                  syncStatus === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100' :
                   'bg-slate-100 border-slate-200 text-slate-700'
                 }`}
                 title={syncTooltipMsg()}
@@ -759,16 +499,16 @@ export default function App() {
                 <span className={`h-2 w-2 rounded-full ${
                   syncStatus === 'synced' ? 'bg-emerald-500 shadow-xs' :
                   syncStatus === 'pending' ? 'bg-blue-500 animate-pulse' :
-                  syncStatus === 'error' ? 'bg-rose-600 animate-ping' :
+                  syncStatus === 'error' ? 'bg-rose-600' :
                   'bg-slate-400'
                 }`} />
                 <span className="font-sans font-bold">
                   {syncStatus === 'synced' ? 'Sincronizado' :
-                   syncStatus === 'pending' ? 'Sincronizando...' :
-                   syncStatus === 'error' ? 'Error Sync ⚠️' :
+                   syncStatus === 'pending' ? `Sincronizando${pendingLabel}` :
+                   syncStatus === 'error' ? (ledger.pendingCount > 0 ? `Sin conexión${pendingLabel}` : 'Error Sync ⚠️') :
                    'Pruebas Local'}
                 </span>
-              </div>
+              </button>
 
             </div>
 
@@ -882,6 +622,8 @@ export default function App() {
 
         {/* Dynamic Display Panels */}
         <div className="min-h-56">
+          <Suspense fallback={<TabFallback />}>
+          {!ledger.hasLoaded && currentTab !== 'config' ? <TabFallback /> : <>
           {currentTab === 'resumen' && (
             <Dashboard 
               deudas={deudas}
@@ -912,10 +654,12 @@ export default function App() {
             />
           )}
 
+          </>}
           {currentTab === 'config' && (
             <SetupGuide 
               sheetUrl={sheetUrl}
-              onSaveUrl={handleSaveSheetUrl}
+              sheetToken={sheetToken}
+              onSaveConnection={handleSaveConnection}
               onClearSettings={handleClearUrlSettings}
               isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
@@ -927,6 +671,7 @@ export default function App() {
               onImportBackup={handleImportBackup}
             />
           )}
+          </Suspense>
         </div>
 
       </main>
@@ -983,7 +728,7 @@ export default function App() {
           setIsQuickSearchOpen(false);
         }}
         onNavigateTab={(tab) => setCurrentTab(tab)}
-        onToggleAccountView={(view) => setAccountView(view)}
+        onToggleAccountView={handleAccountViewToggle}
       />
 
       {/* Floating Action Button (FAB) for Mobile screens */}
