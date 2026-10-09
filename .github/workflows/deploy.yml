@@ -25,10 +25,16 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Unit Tests
+        run: npm test
 
       - name: Build Application
-        run: npx vite build
+        run: npm run build
 
       - name: Deploy to GitHub Pages 🚀
         uses: JamesIves/github-pages-deploy-action@v4
