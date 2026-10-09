@@ -5,6 +5,7 @@ import { roundMoney } from './money';
 export type SheetsErrorCode =
   | 'not-configured'
   | 'unauthorized'
+  | 'no-key'
   | 'outdated-script'
   | 'busy'
   | 'timeout'
@@ -13,6 +14,7 @@ export type SheetsErrorCode =
   | 'bad-response';
 
 export class SheetsError extends Error {
+  keyHint?: string;
   constructor(public code: SheetsErrorCode, message?: string) {
     super(message || code);
     this.name = 'SheetsError';
@@ -22,8 +24,9 @@ export class SheetsError extends Error {
 export function describeSheetsError(code: SheetsErrorCode): string {
   switch (code) {
     case 'not-configured': return 'Falta configurar la URL o la clave de Google Sheets.';
-    case 'unauthorized': return 'Clave de acceso incorrecta. Revisa la clave en Configuración.';
-    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v6 desde Configuración.';
+    case 'unauthorized': return 'La clave de la app no coincide con la del Apps Script. Usa "Diagnosticar conexión" en Ajustes.';
+    case 'no-key': return 'El Apps Script no tiene clave. Copia el código desde Ajustes (ya trae tu clave) y publica una nueva versión.';
+    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v6 desde Ajustes.';
     case 'busy': return 'Google Sheets está ocupado. Se reintentará en unos segundos.';
     case 'timeout': return 'Google Sheets tardó demasiado en responder.';
     case 'network': return 'Sin conexión con Google Sheets.';
@@ -147,8 +150,11 @@ async function request(url: string, init: RequestInit, timeoutMs: number): Promi
     throw new SheetsError('bad-response', 'Respuesta no es JSON');
   }
   if (json && json.ok === false) {
-    const code: SheetsErrorCode = json.error === 'unauthorized' ? 'unauthorized' : json.error === 'busy' ? 'busy' : 'bad-response';
-    throw new SheetsError(code, json.error);
+    const known: SheetsErrorCode[] = ['unauthorized', 'no-key', 'busy'];
+    const code: SheetsErrorCode = known.includes(json.error) ? json.error : 'bad-response';
+    const error = new SheetsError(code, json.error);
+    if (typeof json.keyHint === 'string') error.keyHint = json.keyHint;
+    throw error;
   }
   return json;
 }

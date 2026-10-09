@@ -7,6 +7,9 @@ import {
   saveToken
 } from './utils/storage';
 import { useLedger } from './hooks/useLedger';
+import { usePwa } from './hooks/usePwa';
+import InstallBanner from './components/InstallBanner';
+import { parseAutoConfigLink } from './lib/autoConfig';
 import { newId } from './lib/ledger';
 import { roundMoney, subMoney } from './lib/money';
 import { normalizeLedger } from './lib/sheetsApi';
@@ -19,11 +22,21 @@ import QuickSearchModal from './components/QuickSearchModal';
 
 // Icons
 import {
-  Sparkles,
-  Keyboard,
+  Check,
+  CheckCircle2,
+  CircleAlert,
+  CloudCheck,
+  CloudOff,
+  HardDrive,
+  Info,
+  Plus,
+  RefreshCw,
   Search,
-  Plus
+  TriangleAlert
 } from 'lucide-react';
+import { DESTINATIONS, NavigationBar, NavigationRail, TabId } from './components/Navigation';
+import { useTheme } from './hooks/useTheme';
+import { useFocusTrap } from './hooks/useFocusTrap';
 
 // Tabs are loaded on demand so the first paint does not wait for charts.
 const loadDashboard = () => import('./components/Dashboard');
@@ -54,6 +67,8 @@ interface InitialConfig {
   token: string;
   user: 'Nina' | 'Nando';
   autoConfigured: boolean;
+  // Home-screen shortcut (manifest "shortcuts"): ?accion=nuevo|abono|prestamos
+  accion: string | null;
 }
 
 // Reads saved settings plus the partner auto-config link (?scriptUrl=&token=&user=).
@@ -62,6 +77,7 @@ function readInitialConfig(): InitialConfig {
   const paramUrl = params.get('scriptUrl');
   const paramToken = params.get('token');
   const paramUser = params.get('user');
+  const accion = params.get('accion');
 
   let source = getStoredSource();
   let url = getStoredSheetUrl();
@@ -82,12 +98,12 @@ function readInitialConfig(): InitialConfig {
     user = paramUser;
     localStorage.setItem('df_active_user', paramUser);
   }
-  if (paramUrl || paramToken || paramUser) {
+  if (paramUrl || paramToken || paramUser || accion) {
     // Remove the token from the address bar and browser history.
     window.history.replaceState({}, document.title, window.location.pathname);
   }
 
-  return { source, url, token, user, autoConfigured: !!paramUrl };
+  return { source, url, token, user, autoConfigured: !!paramUrl, accion };
 }
 
 const formatUsd0 = (n: number) =>
@@ -97,9 +113,9 @@ function TabFallback() {
   return (
     <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="Cargando">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl bg-slate-200/70" />)}
+        {[0, 1, 2, 3].map(i => <div key={i} className="h-24 rounded-2xl bg-surface-high/70" />)}
       </div>
-      <div className="h-64 rounded-2xl bg-slate-200/60" />
+      <div className="h-64 rounded-2xl bg-surface-high/60" />
     </div>
   );
 }
@@ -108,7 +124,8 @@ export default function App() {
   const [initial] = useState(readInitialConfig);
 
   // Navigation Tabs: 'resumen' | 'deudas' | 'movimientos' | 'config'
-  const [currentTab, setCurrentTab] = useState<'resumen' | 'deudas' | 'movimientos' | 'config'>('resumen');
+  const [currentTab, setCurrentTab] = useState<TabId>('resumen');
+  const theme = useTheme();
 
   const [activeUser, setActiveUser] = useState<'Nina' | 'Nando'>(initial.user);
   const [accountView, setAccountView] = useState<'Ambos' | 'Nina' | 'Nando'>(() => {
@@ -175,8 +192,20 @@ export default function App() {
   const { deudas, pagos, clientLimits } = ledger.data;
   const syncStatus = ledger.status;
 
+  const confirmRef = useFocusTrap<HTMLDivElement>(confirm.isOpen);
+
+  const pwa = usePwa({
+    onOfflineReady: () => showToast("DeudaFlow ya funciona sin conexión en este dispositivo.", "success")
+  });
+
   useEffect(() => {
     if (initial.autoConfigured) showToast("¡Configuración de Google Sheets autodetectada y cargada!", "success");
+    if (initial.accion === 'nuevo') setIsDebtFormOpen(true);
+    if (initial.accion === 'prestamos') setCurrentTab('deudas');
+    if (initial.accion === 'abono') {
+      setIsQuickSearchOpen(true);
+      showToast("Busca el préstamo y ábrelo para registrar el abono.", "info");
+    }
   }, [initial, showToast]);
 
   // Warm up the other tabs once the browser is idle.
@@ -253,7 +282,7 @@ export default function App() {
       return;
     }
     if (!token) {
-      showToast("Falta la clave de acceso. Genérala en Configuración y pégala también en tu Apps Script.", "warning");
+      showToast("Falta la clave de acceso. Genérala en Ajustes y pégala también en tu Apps Script.", "warning");
       return;
     }
 
@@ -264,6 +293,18 @@ export default function App() {
     setSheetToken(token);
     setIsLocalMode(false);
     showToast("Conexión guardada. Sincronizando con Google Sheets...", "info");
+  };
+
+  // For installed apps (iPhone keeps their storage apart from Safari): paste the partner link.
+  const handleApplyAutoConfigLink = (link: string): boolean => {
+    const parsed = parseAutoConfigLink(link);
+    if (!parsed) {
+      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde DeudaFlow.", "warning");
+      return false;
+    }
+    if (parsed.user) handleUserToggle(parsed.user);
+    handleSaveConnection(parsed.url, parsed.token);
+    return true;
   };
 
   const handleClearUrlSettings = () => {
@@ -387,7 +428,7 @@ export default function App() {
   };
 
   const handleSyncBadgeClick = () => {
-    if (syncStatus === 'error' && (ledger.errorCode === 'unauthorized' || ledger.errorCode === 'outdated-script' || ledger.errorCode === 'not-configured')) {
+    if (syncStatus === 'error' && (ledger.errorCode === 'unauthorized' || ledger.errorCode === 'no-key' || ledger.errorCode === 'outdated-script' || ledger.errorCode === 'not-configured')) {
       setCurrentTab('config');
       return;
     }
@@ -396,236 +437,151 @@ export default function App() {
     }
   };
 
+  const currentTitle = DESTINATIONS.find(d => d.id === currentTab)?.label ?? '';
+  const SyncIcon = syncStatus === 'synced' ? CloudCheck
+    : syncStatus === 'pending' ? RefreshCw
+    : syncStatus === 'error' ? (ledger.errorCode === 'network' || ledger.errorCode === 'timeout' || ledger.pendingCount > 0 ? CloudOff : CircleAlert)
+    : HardDrive;
+  const syncLabel = syncStatus === 'synced' ? 'Sincronizado'
+    : syncStatus === 'pending' ? `Sincronizando${pendingLabel}`
+    : syncStatus === 'error' ? (ledger.pendingCount > 0 || ledger.errorCode === 'network' || ledger.errorCode === 'timeout' ? `Sin conexión${pendingLabel}` : 'Revisar conexión')
+    : 'Modo local';
+
   return (
-    <div className="bg-slate-50/80 text-slate-900 min-h-screen flex flex-col font-sans selection:bg-indigo-500/15 selection:text-indigo-600 pb-16 antialiased">
-      
-      {/* Toast notifications drawer block */}
-      <div className="fixed top-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2.5 max-w-xs sm:max-w-sm pointer-events-none">
-        {toasts.map(t => {
-          let styleClass = "bg-slate-900 text-white border-slate-800 shadow-xl";
-          if (t.type === 'success') styleClass = "bg-emerald-900/95 border-emerald-500/30 text-emerald-100 shadow-xl shadow-emerald-950/20";
-          if (t.type === 'error') styleClass = "bg-rose-900/95 border-rose-500/30 text-rose-100 shadow-xl shadow-rose-950/20";
-          if (t.type === 'warning') styleClass = "bg-amber-950/95 border-amber-500/30 text-amber-200 shadow-xl shadow-amber-950/20";
-          if (t.type === 'info') styleClass = "bg-slate-900/95 border-indigo-500/30 text-indigo-100 shadow-xl shadow-slate-950/20";
+    <div className="bg-surface text-on-surface min-h-dvh font-sans antialiased selection:bg-primary/20 md:pl-24">
 
-          return (
-            <div 
-              key={t.id}
-              className={`flex items-center space-x-2.5 px-4 py-3 rounded-2xl border backdrop-blur-md text-xs font-semibold leading-normal transition-all duration-300 pointer-events-auto shrink-0 animate-fade-in ${styleClass}`}
-            >
-              <Sparkles className="h-4 w-4 shrink-0 text-indigo-400" />
-              <span>{t.message}</span>
-            </div>
-          );
-        })}
-      </div>
+      <NavigationRail
+        current={currentTab}
+        onNavigate={setCurrentTab}
+        onNewDebt={() => setIsDebtFormOpen(true)}
+        theme={theme.preference}
+        onThemeChange={theme.setPreference}
+      />
 
-      {/* Main Header with Google Gemini Light Visual System */}
-      <header className="bg-white/90 backdrop-blur-xl border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-8">
-          <div className="flex flex-col sm:flex-row justify-between sm:h-18 items-start sm:items-center py-3.5 sm:py-0 gap-3">
-            
-            {/* Logo and branding mark with Gemini Sparkle */}
-            <div className="flex items-center space-x-3.5">
-              <div className="gemini-gradient-bg text-white p-2.5 rounded-2xl shadow-sm shadow-blue-500/20 transform hover:scale-105 transition duration-200 flex items-center justify-center">
-                <Sparkles className="h-5 w-5 stroke-[2.2]" />
-              </div>
-              <div>
-                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span className="gemini-gradient-text">DeudaFlow</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-100/80 font-mono">
-                    <Sparkles className="h-2.5 w-2.5 text-blue-500" />
-                    Gemini AI Edition
-                  </span>
-                </h1>
-                <p className="text-[11px] text-slate-500 font-medium tracking-tight">Finanzas compartidas y préstamos entre Nina y Nando</p>
-              </div>
-            </div>
-
-            {/* Config & Active operator user block */}
-            <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
-              
-              {/* Quick Search trigger button */}
-              <button
-                onClick={() => setIsQuickSearchOpen(true)}
-                className="hidden sm:flex items-center space-x-2 bg-slate-100/90 hover:bg-slate-200/80 text-slate-700 border border-slate-200/80 px-3 py-1.5 rounded-full text-xs font-bold transition cursor-pointer active:scale-95 shadow-2xs"
-                title="Búsqueda Rápida (Cmd + K)"
-              >
-                <Search className="h-3.5 w-3.5 text-slate-500" />
-                <span className="hidden lg:inline">Buscar</span>
-                <kbd className="bg-white border border-slate-300 text-slate-500 text-[10px] px-1.5 py-0.2 rounded-md font-mono">⌘K</kbd>
-              </button>
-
-              {/* Operator Badge Switcher */}
-              <div className="flex items-center space-x-1 bg-slate-100/80 p-1 rounded-full border border-slate-200/80">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2.5 font-mono hidden md:inline">Operando:</span>
-                <button 
-                  onClick={() => handleUserToggle('Nina')}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
-                    activeUser === 'Nina' 
-                      ? 'bg-slate-900 text-white shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-blue-400" />
-                  Nina
-                </button>
-                <button 
-                  onClick={() => handleUserToggle('Nando')}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 flex items-center gap-1.5 ${
-                    activeUser === 'Nando' 
-                      ? 'bg-amber-500 text-slate-950 shadow-xs' 
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-amber-950" />
-                  Nando
-                </button>
-              </div>
-
-              {/* Drive sync status beacon */}
-              <button
-                type="button"
-                onClick={handleSyncBadgeClick}
-                aria-live="polite"
-                className={`flex items-center space-x-2 border px-3.5 py-1.5 rounded-full text-xs font-semibold select-none transition cursor-pointer ${
-                  syncStatus === 'synced' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-800 hover:bg-emerald-100' :
-                  syncStatus === 'pending' ? 'bg-blue-50/80 border-blue-200 text-blue-900' :
-                  syncStatus === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100' :
-                  'bg-slate-100 border-slate-200 text-slate-700'
-                }`}
-                title={syncTooltipMsg()}
-              >
-                <span className={`h-2 w-2 rounded-full ${
-                  syncStatus === 'synced' ? 'bg-emerald-500 shadow-xs' :
-                  syncStatus === 'pending' ? 'bg-blue-500 animate-pulse' :
-                  syncStatus === 'error' ? 'bg-rose-600' :
-                  'bg-slate-400'
-                }`} />
-                <span className="font-sans font-bold">
-                  {syncStatus === 'synced' ? 'Sincronizado' :
-                   syncStatus === 'pending' ? `Sincronizando${pendingLabel}` :
-                   syncStatus === 'error' ? (ledger.pendingCount > 0 ? `Sin conexión${pendingLabel}` : 'Error Sync ⚠️') :
-                   'Pruebas Local'}
-                </span>
-              </button>
-
-            </div>
-
+      {/* Top app bar */}
+      <header className="sticky top-0 z-30 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/50 pt-[env(safe-area-inset-top)]">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
+          <img src="./icon.svg" alt="" className="h-9 w-9 rounded-xl md:hidden" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant leading-none">DeudaFlow</p>
+            <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{currentTitle}</h1>
           </div>
+
+          {/* Search */}
+          <button
+            type="button"
+            onClick={() => setIsQuickSearchOpen(true)}
+            title="Buscar (Ctrl/⌘ K)"
+            aria-label="Buscar"
+            className="m3-state h-12 w-12 sm:w-auto sm:px-4 rounded-full flex items-center justify-center gap-2 text-on-surface-variant sm:bg-surface-container cursor-pointer"
+          >
+            <Search className="h-5 w-5" />
+            <span className="hidden sm:inline text-sm font-medium">Buscar</span>
+            <kbd className="hidden lg:inline text-[11px] font-semibold border border-outline-variant rounded-md px-1.5 py-0.5">⌘K</kbd>
+          </button>
+
+          {/* Who is registering (Nina / Nando) */}
+          <div role="radiogroup" aria-label="Operando como" className="hidden sm:flex items-center h-10 rounded-full border border-outline-variant overflow-hidden">
+            {(['Nina', 'Nando'] as const).map(u => (
+              <button
+                key={u}
+                type="button"
+                role="radio"
+                aria-checked={activeUser === u}
+                onClick={() => handleUserToggle(u)}
+                className={`m3-state h-full px-4 flex items-center gap-1.5 text-sm font-semibold cursor-pointer ${
+                  activeUser === u
+                    ? (u === 'Nina' ? 'bg-nina-container text-on-nina-container' : 'bg-nando-container text-on-nando-container')
+                    : 'text-on-surface-variant'
+                }`}
+              >
+                {activeUser === u && <Check className="h-4 w-4" aria-hidden="true" />}
+                {u}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = activeUser === 'Nina' ? 'Nando' : 'Nina';
+              handleUserToggle(next);
+              showToast(`Ahora registras como ${next}.`, 'info');
+            }}
+            aria-label={`Operando como ${activeUser}. Cambiar a ${activeUser === 'Nina' ? 'Nando' : 'Nina'}`}
+            className={`sm:hidden h-10 w-10 rounded-full text-sm font-bold flex items-center justify-center cursor-pointer ${
+              activeUser === 'Nina' ? 'bg-nina-container text-on-nina-container' : 'bg-nando-container text-on-nando-container'
+            }`}
+          >
+            {activeUser.slice(0, 2)}
+          </button>
+
+          {/* Sync status */}
+          <button
+            type="button"
+            onClick={handleSyncBadgeClick}
+            aria-live="polite"
+            aria-label={syncLabel}
+            title={syncTooltipMsg()}
+            className={`m3-state relative h-10 min-w-10 px-2.5 lg:px-3.5 rounded-full flex items-center justify-center gap-2 text-sm font-semibold cursor-pointer ${
+              syncStatus === 'synced' ? 'bg-success-container text-on-success-container' :
+              syncStatus === 'pending' ? 'bg-primary-container text-on-primary-container' :
+              syncStatus === 'error' ? 'bg-error-container text-on-error-container' :
+              'bg-surface-container text-on-surface-variant'
+            }`}
+          >
+            <SyncIcon className={`h-5 w-5 ${syncStatus === 'pending' ? 'animate-spin [animation-duration:1.6s]' : ''}`} aria-hidden="true" />
+            <span className="hidden lg:inline">{syncLabel}</span>
+            {ledger.pendingCount > 0 && (
+              <span className="lg:hidden absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-error text-on-error text-[11px] font-bold flex items-center justify-center">
+                {ledger.pendingCount}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
-      {/* Main Container Wrapper */}
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-8 w-full mt-6 flex-grow">
-        
-        {/* Global Account Select View with Gemini Styling */}
-        <div id="account-view-filter-bar" className="gemini-card rounded-2xl p-4 sm:p-5 shadow-xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest block font-mono mb-0.5 flex items-center gap-1">
-              <Sparkles className="h-3 w-3 text-blue-500" /> Visor Consolidado
-            </span>
-            <span className="text-xs sm:text-sm font-semibold text-slate-700">Filtrar registros e historial por cuenta:</span>
-          </div>
-          
-          <div className="flex bg-slate-100/90 p-1 rounded-full self-start sm:self-center border border-slate-200/80 w-full sm:w-auto">
-            <button 
-              onClick={() => handleAccountViewToggle('Ambos')}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
-                accountView === 'Ambos' 
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Ambas Cuentas
-            </button>
-            <button 
-              onClick={() => handleAccountViewToggle('Nina')}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
-                accountView === 'Nina' 
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Cuenta Nina
-            </button>
-            <button 
-              onClick={() => handleAccountViewToggle('Nando')}
-              className={`flex-1 sm:flex-initial px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
-                accountView === 'Nando' 
-                  ? 'bg-amber-500 text-slate-950 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-            >
-              Cuenta Nando
-            </button>
-          </div>
-        </div>
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-6 w-full pt-5 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-12">
 
-        {/* Tab Selection Navigation Bar */}
-        <div className="flex space-x-1 bg-slate-100/90 p-1.5 rounded-full mb-6 max-w-lg border border-slate-200/80 shadow-2xs">
-          <button 
-            onClick={() => setCurrentTab('resumen')}
-            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
-              currentTab === 'resumen' 
-                ? 'bg-white text-blue-600 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Dashboard
-          </button>
-          <button 
-            onClick={() => setCurrentTab('deudas')}
-            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
-              currentTab === 'deudas' 
-                ? 'bg-white text-blue-600 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Préstamos
-          </button>
-          <button 
-            onClick={() => setCurrentTab('movimientos')}
-            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
-              currentTab === 'movimientos' 
-                ? 'bg-white text-blue-600 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Historial
-          </button>
-          <button 
-            onClick={() => setCurrentTab('config')}
-            className={`flex-1 py-2 px-3 text-xs sm:text-sm font-bold rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
-              currentTab === 'config' 
-                ? 'bg-white text-blue-600 shadow-xs' 
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Configuración
-          </button>
-        </div>
+        <InstallBanner
+          canInstall={pwa.canInstall}
+          isIos={pwa.isIos}
+          isStandalone={pwa.isStandalone}
+          onInstall={() => { void pwa.promptInstall(); }}
+        />
 
-        {/* Hotkey Shortcuts overlay hint */}
-        <div className="hidden md:flex justify-between items-center text-[11px] text-slate-500 bg-white border border-slate-200/70 px-4 py-2.5 rounded-2xl mb-6 font-medium shadow-2xs">
-          <span className="flex items-center gap-1.5 font-bold text-slate-700">
-            <Keyboard className="h-4 w-4 text-indigo-600" />
-            Atajos de teclado:
-          </span>
-          <div className="flex space-x-5">
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">⌘K</kbd> Búsqueda Rápida</span>
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">N</kbd> Nuevo Préstamo</span>
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">1 - 4</kbd> Pestañas</span>
-            <span><kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded-md text-slate-800 font-bold font-mono text-[10px]">Esc</kbd> Cerrar</span>
+        {/* Account filter (M3 segmented button) */}
+        {currentTab !== 'config' && (
+          <div className="mb-5 flex items-center gap-3">
+            <span className="hidden sm:inline text-sm font-medium text-on-surface-variant">Cuenta</span>
+            <div role="radiogroup" aria-label="Filtrar por cuenta" className="flex h-10 w-full sm:w-auto rounded-full border border-outline overflow-hidden">
+              {([['Ambos', 'Ambas'], ['Nina', 'Nina'], ['Nando', 'Nando']] as const).map(([value, label], i) => {
+                const selected = accountView === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => handleAccountViewToggle(value)}
+                    className={`m3-state flex-1 sm:flex-initial sm:min-w-28 px-4 flex items-center justify-center gap-1.5 text-sm font-semibold cursor-pointer ${
+                      i > 0 ? 'border-l border-outline' : ''
+                    } ${selected ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface'}`}
+                  >
+                    {selected && <Check className="h-4 w-4" aria-hidden="true" />}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Dynamic Display Panels */}
         <div className="min-h-56">
           <Suspense fallback={<TabFallback />}>
           {!ledger.hasLoaded && currentTab !== 'config' ? <TabFallback /> : <>
           {currentTab === 'resumen' && (
             <Dashboard 
+              theme={theme.resolved}
               deudas={deudas}
               pagos={pagos}
               accountView={accountView}
@@ -639,8 +595,10 @@ export default function App() {
               deudas={deudas}
               accountView={accountView}
               onOpenDetails={(id) => setSelectedDetailsId(id)}
+              onOpenAbono={handleOpenAbonoDirect}
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
               onDeleteDebt={handleDeleteDebt}
+              onNotify={(m) => showToast(m, 'success')}
             />
           )}
 
@@ -657,9 +615,19 @@ export default function App() {
           </>}
           {currentTab === 'config' && (
             <SetupGuide 
+              key={`${sheetUrl}|${sheetToken}`}
               sheetUrl={sheetUrl}
               sheetToken={sheetToken}
               onSaveConnection={handleSaveConnection}
+              onApplyAutoConfigLink={handleApplyAutoConfigLink}
+              themePreference={theme.preference}
+              onThemeChange={theme.setPreference}
+              pwa={{
+                isStandalone: pwa.isStandalone,
+                isIos: pwa.isIos,
+                canInstall: pwa.canInstall,
+                onInstall: () => { void pwa.promptInstall(); }
+              }}
               onClearSettings={handleClearUrlSettings}
               isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
@@ -673,8 +641,9 @@ export default function App() {
           )}
           </Suspense>
         </div>
-
       </main>
+
+      <NavigationBar current={currentTab} onNavigate={setCurrentTab} />
 
       {/* ================= COMPLEMENTARY POPUPS AND MODALS ================= */}
 
@@ -731,40 +700,86 @@ export default function App() {
         onToggleAccountView={handleAccountViewToggle}
       />
 
-      {/* Floating Action Button (FAB) for Mobile screens */}
-      <div className="fixed bottom-6 right-6 sm:hidden z-40 flex flex-col items-end space-y-2.5">
-        <button
-          onClick={() => setIsQuickSearchOpen(true)}
-          className="bg-white text-slate-700 p-3 rounded-full shadow-lg border border-slate-200/80 flex items-center justify-center active:scale-90 transition cursor-pointer hover:bg-slate-50"
-          title="Búsqueda Rápida"
-        >
-          <Search className="h-5 w-5 text-slate-600" />
-        </button>
-        <button
-          onClick={() => setIsDebtFormOpen(true)}
-          className="gemini-gradient-bg text-white p-4 rounded-full shadow-xl shadow-blue-500/25 flex items-center justify-center active:scale-90 transition cursor-pointer"
-          title="Registrar Nuevo Préstamo"
-        >
-          <Plus className="h-6 w-6 stroke-[2.5]" />
-        </button>
+      {/* FAB (phones): new loan */}
+      <button
+        type="button"
+        onClick={() => setIsDebtFormOpen(true)}
+        aria-label="Nuevo préstamo"
+        className="md:hidden fixed z-40 right-4 bottom-[calc(5rem+1rem+env(safe-area-inset-bottom))] h-14 w-14 rounded-2xl bg-primary-container text-on-primary-container m3-elevation-3 m3-state flex items-center justify-center cursor-pointer active:scale-95 transition-transform"
+      >
+        <Plus className="h-6 w-6" strokeWidth={2.4} />
+      </button>
+
+      {/* Snackbars */}
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed z-50 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bottom-[calc(5rem+5.5rem+env(safe-area-inset-bottom))] md:bottom-6 flex flex-col gap-2 pointer-events-none"
+      >
+        {toasts.map(t => {
+          const Icon = t.type === 'success' ? CheckCircle2 : t.type === 'error' ? CircleAlert : t.type === 'warning' ? TriangleAlert : Info;
+          return (
+            <div
+              key={t.id}
+              className="pointer-events-auto flex items-start gap-3 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-3 m3-elevation-3 text-sm leading-snug animate-sheet-in"
+            >
+              <Icon className={`h-5 w-5 shrink-0 mt-px ${t.type === 'error' || t.type === 'warning' ? 'text-warning-container' : 'text-inverse-primary'}`} aria-hidden="true" />
+              <span>{t.message}</span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Custom Confirmation Dialog (Replaces native window.confirm) */}
+      {/* New version available (service worker update) */}
+      {pwa.needRefresh && (
+        <div
+          role="status"
+          className="fixed z-50 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bottom-[calc(5rem+5.5rem+env(safe-area-inset-bottom))] md:bottom-24 bg-inverse-surface text-inverse-on-surface rounded-xl m3-elevation-3 px-4 py-2 flex items-center gap-2 animate-sheet-in"
+        >
+          <span className="text-sm flex-1 py-1">Hay una versión nueva de DeudaFlow.</span>
+          <button
+            type="button"
+            onClick={pwa.dismissUpdate}
+            className="m3-state h-10 px-3 rounded-full text-sm font-semibold text-inverse-on-surface/80 cursor-pointer"
+          >
+            Luego
+          </button>
+          <button
+            type="button"
+            onClick={pwa.updateApp}
+            className="m3-state h-10 px-3 rounded-full text-sm font-bold text-inverse-primary cursor-pointer"
+          >
+            Actualizar
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation dialog (M3 basic dialog) */}
       {confirm.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-            <h3 className="font-bold text-slate-900 text-base">{confirm.title}</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">{confirm.message}</p>
-            <div className="flex space-x-3 pt-2">
-              <button 
+        <div className="fixed inset-0 bg-scrim/40 flex items-center justify-center z-50 p-6 animate-fade-in" onClick={() => setConfirm(prev => ({ ...prev, isOpen: false }))}>
+          <div
+            ref={confirmRef}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-title"
+            aria-describedby="confirm-message"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-surface-high text-on-surface rounded-[28px] max-w-sm w-full p-6 m3-elevation-3"
+          >
+            <h3 id="confirm-title" className="text-2xl font-semibold leading-tight">{confirm.title}</h3>
+            <p id="confirm-message" className="mt-4 text-sm text-on-surface-variant leading-relaxed">{confirm.message}</p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
                 onClick={() => setConfirm(prev => ({ ...prev, isOpen: false }))}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition active:scale-95 cursor-pointer"
+                className="m3-state h-10 px-4 rounded-full text-sm font-semibold text-primary cursor-pointer"
               >
                 Cancelar
               </button>
-              <button 
+              <button
+                type="button"
                 onClick={confirm.onConfirm}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-[#ba1a1a] hover:opacity-95 transition active:scale-95 cursor-pointer"
+                className="m3-state h-10 px-5 rounded-full text-sm font-semibold bg-error text-on-error cursor-pointer"
               >
                 Confirmar
               </button>

@@ -33,7 +33,8 @@ var CACHE_CHUNK_CHARS = 40000;
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (!isAuthorized_(p.token)) return json_({ ok: false, error: "unauthorized" });
+  var denied = authError_(p.token);
+  if (denied) return json_(denied);
 
   if (p.action === "bcv") return json_(getBcvRate_());
 
@@ -51,7 +52,8 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: "bad-request" });
   }
-  if (!isAuthorized_(body.token)) return json_({ ok: false, error: "unauthorized" });
+  var denied = authError_(body.token);
+  if (denied) return json_(denied);
 
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return json_({ ok: false, error: "busy" });
@@ -348,9 +350,13 @@ function fetchJson_(url) {
 
 // ============================ UTILIDADES ============================
 
-function isAuthorized_(token) {
-  if (!API_TOKEN || API_TOKEN.indexOf("__DEUDAFLOW") === 0) return false;
-  return typeof token === "string" && token === API_TOKEN;
+// null = autorizado. keyHint (últimos 4 caracteres) ayuda a detectar si la
+// app y el script tienen claves distintas sin revelar la clave.
+function authError_(token) {
+  var key = String(API_TOKEN || "").trim();
+  if (!key || key.indexOf("__DEUDAFLOW") === 0) return { ok: false, error: "no-key" };
+  if (typeof token === "string" && token.trim() === key) return null;
+  return { ok: false, error: "unauthorized", keyHint: key.slice(-4) };
 }
 
 function json_(obj) {
