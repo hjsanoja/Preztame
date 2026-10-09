@@ -53,6 +53,20 @@ export function saveToken(token: string) {
   localStorage.setItem("df_sheet_token", token);
 }
 
+// Key shown in Configuración before the connection is saved. Kept in storage so
+// it does not change between visits while the user is deploying the script.
+export function getOrCreateDraftToken(): string {
+  const existing = localStorage.getItem("df_sheet_token") || localStorage.getItem("df_sheet_token_draft");
+  if (existing) return existing;
+  const token = generateToken();
+  localStorage.setItem("df_sheet_token_draft", token);
+  return token;
+}
+
+export function saveDraftToken(token: string) {
+  localStorage.setItem("df_sheet_token_draft", token);
+}
+
 export function generateToken(): string {
   const bytes = new Uint8Array(18);
   crypto.getRandomValues(bytes);

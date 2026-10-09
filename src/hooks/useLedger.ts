@@ -158,7 +158,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
         setStatus('synced');
       } catch (err) {
         const code = reportError(err);
-        const retryable = code !== 'unauthorized' && code !== 'outdated-script' && code !== 'not-configured';
+        const retryable = code !== 'unauthorized' && code !== 'no-key' && code !== 'outdated-script' && code !== 'not-configured';
         if (retryable && outboxRef.current.length > 0) scheduleRetry(() => { void sync({ skipRefresh: true }); });
       } finally {
         setHasLoaded(true);

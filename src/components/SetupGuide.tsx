@@ -4,7 +4,7 @@ import {
   AlertTriangle, Download, Upload, Sliders, ShieldAlert, User, Plus, Trash2 
 } from 'lucide-react';
 import { Debt, Payment } from '../types';
-import { formatMonthName, generateToken } from '../utils/storage';
+import { formatMonthName, getOrCreateDraftToken, saveDraftToken } from '../utils/storage';
 import { fetchSnapshot, SheetsError, describeSheetsError } from '../lib/sheetsApi';
 import appsScriptSource from '../../apps-script/Code.gs?raw';
 
@@ -41,7 +41,7 @@ export default function SetupGuide({
 }: SetupGuideProps) {
 
   const [urlInput, setUrlInput] = useState(sheetUrl);
-  const [tokenInput, setTokenInput] = useState(() => sheetToken || generateToken());
+  const [tokenInput, setTokenInput] = useState(() => sheetToken || getOrCreateDraftToken());
   const [copiedToken, setCopiedToken] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -101,6 +101,16 @@ export default function SetupGuide({
       });
     } catch (err: any) {
       console.warn("Diagnostic test failed:", err);
+      if (err instanceof SheetsError && err.code === 'unauthorized') {
+        const appEnd = tokenInput.trim().slice(-4);
+        setTestResult({
+          status: 'error-server',
+          message: err.keyHint
+            ? `La clave no coincide: el Apps Script publicado tiene una clave que termina en "…${err.keyHint}" y la app usa una que termina en "…${appEnd}". Copia el código de nuevo (ya trae la clave de la app), pégalo en Apps Script y publica una NUEVA VERSIÓN.`
+            : `La clave no coincide con la del Apps Script publicado (la de la app termina en "…${appEnd}"). Copia el código de nuevo, pégalo en Apps Script y publica una NUEVA VERSIÓN.`
+        });
+        return;
+      }
       if (err instanceof SheetsError && err.code !== 'network' && err.code !== 'timeout') {
         setTestResult({ status: 'error-server', message: describeSheetsError(err.code) });
         return;
@@ -344,6 +354,7 @@ export default function SetupGuide({
                     value={tokenInput}
                     onChange={(e) => {
                       setTokenInput(e.target.value);
+                      saveDraftToken(e.target.value.trim());
                       setTestResult({ status: 'idle' });
                     }}
                     className="min-w-0 flex-1 px-3.5 py-2.5 border border-[#e2e8f0] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#040d53]/10 focus:border-[#040d53] transition font-mono"

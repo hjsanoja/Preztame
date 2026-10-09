@@ -98,10 +98,18 @@ describe('Apps Script v6', () => {
   beforeEach(() => { env = makeEnv(); });
 
   it('rejects requests without the right token', () => {
-    expect(JSON.parse(env.context.doGet({ parameter: {} }).text)).toEqual({ ok: false, error: 'unauthorized' });
+    expect(JSON.parse(env.context.doGet({ parameter: {} }).text)).toEqual({ ok: false, error: 'unauthorized', keyHint: 'oken' });
     expect(JSON.parse(env.context.doGet({ parameter: { token: 'nope' } }).text).error).toBe('unauthorized');
     const res = JSON.parse(env.context.doPost({ postData: { contents: JSON.stringify({ action: 'deleteDebt', id: 'd-1' }) } }).text);
     expect(res.error).toBe('unauthorized');
+  });
+
+  it('reports a script without a key, and accepts a key with stray spaces', () => {
+    const ctx: any = { ...env.context };
+    vm.createContext(ctx);
+    vm.runInContext(SOURCE.replace('"test-token"', '"__DEUDAFLOW_TOKEN__"'), ctx);
+    expect(JSON.parse(ctx.doGet({ parameter: { token: 'x' } }).text)).toEqual({ ok: false, error: 'no-key' });
+    expect(JSON.parse(env.context.doGet({ parameter: { token: ' test-token ' } }).text).ok).toBe(true);
   });
 
   it('creates the sheets and returns an empty payload with a version', () => {

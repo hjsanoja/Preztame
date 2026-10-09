@@ -387,7 +387,7 @@ export default function App() {
   };
 
   const handleSyncBadgeClick = () => {
-    if (syncStatus === 'error' && (ledger.errorCode === 'unauthorized' || ledger.errorCode === 'outdated-script' || ledger.errorCode === 'not-configured')) {
+    if (syncStatus === 'error' && (ledger.errorCode === 'unauthorized' || ledger.errorCode === 'no-key' || ledger.errorCode === 'outdated-script' || ledger.errorCode === 'not-configured')) {
       setCurrentTab('config');
       return;
     }
