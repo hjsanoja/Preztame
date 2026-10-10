@@ -4,13 +4,25 @@ import { Debt } from '../types';
 import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
 import { X, Calendar, DollarSign, ArrowUpRight, RefreshCw, Globe, AlertTriangle } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
+import { formatRate, presentRate, roundUpRate } from '../lib/rate';
+import { localDay, nextMonthKey } from '../lib/format';
 import { normalizeTag, tagColorVar, tagLabel, tagOptions } from '../lib/tags';
+import { DebtChanges } from '../lib/ledger';
+import { accountTone, useAccounts } from './ui';
+import ClientPicker from './ClientPicker';
 import { Check, Plus } from 'lucide-react';
 
 interface DebtFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: Omit<Debt, 'id' | 'saldo' | 'estado' | 'creadoPor'>) => void;
+  // Edit mode: the loan being edited and where to send the changes.
+  editing?: Debt | null;
+  onUpdate?: (id: string, changes: DebtChanges) => void;
+  // New loan for a known person (from their profile).
+  initialContacto?: string;
+  // Saved client list ("Clientes" sheet).
+  clients?: string[];
   activeUser: string;
   deudas: Debt[];
   clientLimits: Record<string, number>;
@@ -22,16 +34,21 @@ export default function DebtFormModal({
   onSubmit,
   activeUser,
   deudas,
-  clientLimits
+  clientLimits,
+  editing = null,
+  onUpdate,
+  initialContacto,
+  clients
 }: DebtFormModalProps) {
+  const accounts = useAccounts();
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
 
   // Primary state fields
-  const [cuenta, setCuenta] = useState<'Nina' | 'Nando'>('Nina');
+  const [cuenta, setCuenta] = useState<string>('');
   const [contacto, setContacto] = useState('');
   const [monto, setMonto] = useState('');
   const [mesPago, setMesPago] = useState('');
-  const [tasaCambio, setTasaCambio] = useState('1.0000');
+  const [tasaCambio, setTasaCambio] = useState('1.00');
   const [fecha, setFecha] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [tipo, setTipo] = useState('favor');
@@ -94,10 +111,10 @@ export default function DebtFormModal({
       if (rate) {
         setBcvRate(rate);
         setTasaCambio((current) => {
-          // If the user hasn't customized the default 1.0000 rate,
+          // If the user hasn't customized the default 1.00 rate,
           // or if they clicked manual refresh, apply the fetched rate automatically.
-          if (force || current === '1.0000' || current === '1' || current === '') {
-            return rate.toFixed(4);
+          if (force || current === '1.00' || current === '1.0000' || current === '1' || current === '') {
+            return presentRate(rate);
           }
           return current;
         });
@@ -114,20 +131,35 @@ export default function DebtFormModal({
   // Initialize dates and drafts
   useEffect(() => {
     if (isOpen) {
-      const today = new Date().toISOString().split('T')[0];
-      const curMonth = new Date().toISOString().slice(0, 7);
+      const today = localDay();
+      // New loans are usually paid the following month.
+      const curMonth = nextMonthKey();
       
       // Default initial states
       setFecha(today);
       setMesPago(curMonth);
-      setCuenta(activeUser === 'Nando' ? 'Nando' : 'Nina');
-      setTasaCambio('1.0000');
+      setCuenta(accounts.includes(activeUser) ? activeUser : accounts[0] || activeUser);
+      setTasaCambio('1.00');
       setBcvRate(null);
       setFetchError(false);
 
+      if (editing) {
+        setCuenta(editing.cuenta);
+        setContacto(editing.contacto);
+        setMonto(String(editing.monto));
+        setMesPago(editing.mesPago);
+        setTasaCambio(String(editing.tasaCambio || 1));
+        setFecha(editing.fecha);
+        setDescripcion(editing.descripcion);
+        setTipo(normalizeTag(editing.tipo) || 'favor');
+        return;
+      }
+
       // Attempt to load existing draft
       const draft = loadDraft("debt_draft");
-      if (draft) {
+      if (initialContacto) {
+        setContacto(initialContacto);
+      } else if (draft) {
         if (draft.cuenta) setCuenta(draft.cuenta);
         if (draft.contacto) setContacto(draft.contacto);
         if (draft.monto) setMonto(draft.monto);
@@ -141,11 +173,11 @@ export default function DebtFormModal({
       // Automatically fetch current BCV exchange rate
       loadBcvRate();
     }
-  }, [isOpen, activeUser]);
+  }, [isOpen, activeUser, editing, initialContacto]);
 
   // Autosave current inputs as draft
   useEffect(() => {
-    if (isOpen && (contacto || monto || descripcion)) {
+    if (isOpen && !editing && (contacto || monto || descripcion)) {
       saveDraft("debt_draft", {
         cuenta,
         contacto,
@@ -172,6 +204,26 @@ export default function DebtFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+
+    if (editing) {
+      const next = {
+        cuenta,
+        contacto: contacto.trim(),
+        monto: parseFloat(monto),
+        tipo: normalizeTag(tipo) || 'favor',
+        descripcion: descripcion.trim(),
+        fecha,
+        mesPago,
+        tasaCambio: parseFloat(tasaCambio)
+      };
+      const changes: DebtChanges = {};
+      (Object.keys(next) as (keyof typeof next)[]).forEach(k => {
+        if (next[k] !== editing[k]) (changes as any)[k] = next[k];
+      });
+      if (Object.keys(changes).length) onUpdate?.(editing.id, changes);
+      onClose();
+      return;
+    }
 
     onSubmit({
       cuenta,
@@ -210,7 +262,7 @@ export default function DebtFormModal({
         <div className="flex justify-between items-center pb-3 border-b border-outline-variant shrink-0">
           <h3 id="debt-form-title" className="font-bold text-on-surface text-[17px] flex items-center">
             <ArrowUpRight className="h-5 w-5 mr-1 text-error" />
-            Registrar Nuevo Préstamo
+            {editing ? 'Editar préstamo' : 'Registrar Nuevo Préstamo'}
           </h3>
           <button 
             onClick={onClose}
@@ -229,68 +281,42 @@ export default function DebtFormModal({
             <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">
               Asignar a Cuenta de:
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <label className={`border rounded-xl p-3 flex items-center justify-center space-x-2 cursor-pointer transition ${
-                cuenta === 'Nina' 
-                  ? 'border-primary bg-primary-container/50 text-on-surface font-bold'
-                  : 'border-outline-variant text-on-surface-variant hover:bg-surface-low'
-              }`}>
-                <input 
-                  type="radio" 
-                  name="cuenta" 
-                  value="Nina" 
-                  checked={cuenta === 'Nina'}
-                  onChange={() => setCuenta('Nina')}
-                  className="accent-primary"
-                />
-                <span className="text-xs">Nina</span>
-              </label>
-              <label className={`border rounded-xl p-3 flex items-center justify-center space-x-2 cursor-pointer transition ${
-                cuenta === 'Nando' 
-                  ? 'border-warning bg-warning-container/50 text-on-warning-container font-bold'
-                  : 'border-outline-variant text-on-surface-variant hover:bg-surface-low'
-              }`}>
-                <input 
-                  type="radio" 
-                  name="cuenta" 
-                  value="Nando" 
-                  checked={cuenta === 'Nando'}
-                  onChange={() => setCuenta('Nando')}
-                  className="accent-warning"
-                />
-                <span className="text-xs">Nando</span>
-              </label>
+            <div role="radiogroup" aria-label="Cuenta" className="flex flex-wrap gap-2">
+              {accounts.map(name => {
+                const selected = cuenta === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setCuenta(name)}
+                    className={`m3-state h-10 px-4 rounded-full text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer border ${
+                      selected ? `${accountTone(name, accounts).container} border-transparent` : 'border-outline-variant text-on-surface-variant'
+                    }`}
+                  >
+                    {selected && <Check className="h-4 w-4" aria-hidden="true" />}
+                    {name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Contact (Debtor) Name */}
           <div>
             <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-              Nombre del Solicitante / Cliente
+              Cliente
             </label>
-            <input 
-              type="text"
-              placeholder="Ej. Juan Pérez o Tía María"
-              list="df-known-contacts"
-              autoComplete="off"
+            <ClientPicker
               value={contacto}
-              onChange={(e) => {
-                setContacto(e.target.value);
-                setContactoTouched(true);
-              }}
-              onBlur={() => setContactoTouched(true)}
-              className={`w-full px-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
-                contactoTouched
-                  ? isContactoValid 
-                    ? 'border-success focus:ring-success/20' 
-                    : 'border-error focus:ring-error/20'
-                  : 'border-outline-variant focus:ring-primary/10'
-              }`}
-              required
+              onChange={(v) => { setContacto(v); setContactoTouched(true); }}
+              // Only flag the name after something was typed, so the message
+              // does not shift the form while tapping other fields.
+              onBlur={() => { if (contacto.trim()) setContactoTouched(true); }}
+              clients={clients ?? knownContacts}
+              invalid={contactoTouched && !isContactoValid}
             />
-            <datalist id="df-known-contacts">
-              {knownContacts.map(c => <option key={c} value={c} />)}
-            </datalist>
             {contactoTouched && !isContactoValid && (
               <span className="text-[11px] text-error mt-1 block">El nombre debe poseer al menos 2 caracteres.</span>
             )}
@@ -313,7 +339,7 @@ export default function DebtFormModal({
                   setMonto(e.target.value);
                   setMontoTouched(true);
                 }}
-                onBlur={() => setMontoTouched(true)}
+                onBlur={() => { if (monto) setMontoTouched(true); }}
                 className={`w-full pl-8 pr-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
                   montoTouched
                     ? isMontoValid 
@@ -383,8 +409,9 @@ export default function DebtFormModal({
               </div>
               <input 
                 type="number"
-                step="0.0001"
-                min="0.0001"
+                step="0.01"
+                min="0.01"
+                inputMode="decimal"
                 value={tasaCambio}
                 onChange={(e) => {
                   setTasaCambio(e.target.value);
@@ -402,14 +429,24 @@ export default function DebtFormModal({
                   </span>
                 ) : bcvRate ? (
                   <span className="text-on-success-container font-bold flex items-center">
-                    BCV: {bcvRate.toFixed(4)}
-                    {parseFloat(tasaCambio) !== bcvRate && (
+                    BCV: {formatRate(bcvRate)}
+                    {tasaCambio !== formatRate(bcvRate) && (
                       <button
                         type="button"
-                        onClick={() => setTasaCambio(bcvRate.toFixed(4))}
+                        onClick={() => setTasaCambio(formatRate(bcvRate))}
                         className="ml-1 text-on-surface hover:underline font-semibold cursor-pointer"
                       >
                         (Usar)
+                      </button>
+                    )}
+                    {tasaCambio !== formatRate(roundUpRate(bcvRate)) && (
+                      <button
+                        type="button"
+                        onClick={() => setTasaCambio(formatRate(roundUpRate(bcvRate)))}
+                        title="Redondear hacia arriba"
+                        className="ml-2 px-2 h-6 rounded-md bg-secondary-container text-on-secondary-container font-semibold cursor-pointer"
+                      >
+                        ↑ {roundUpRate(bcvRate)}
                       </button>
                     )}
                   </span>
@@ -515,9 +552,9 @@ export default function DebtFormModal({
             <button 
               type="submit"
               disabled={!isFormValid}
-              className="flex-1 bg-inverse-surface focus:opacity-90 disabled:opacity-50 text-inverse-on-surface py-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center space-x-1 cursor-pointer shadow-sm shadow-shadow"
+              className="m3-state flex-1 h-12 rounded-full bg-primary text-on-primary disabled:opacity-40 font-semibold text-sm flex items-center justify-center cursor-pointer"
             >
-              <span>Guardar Préstamo</span>
+              <span>{editing ? 'Guardar cambios' : 'Guardar préstamo'}</span>
             </button>
           </div>
 

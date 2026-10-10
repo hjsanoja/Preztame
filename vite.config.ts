@@ -14,11 +14,11 @@ export default defineConfig(() => {
         // The app asks before reloading into a new version (see usePwa).
         registerType: 'prompt',
         injectRegister: false,
-        includeAssets: ['icon.svg', 'favicon-48.png', 'apple-touch-icon.png'],
+        includeAssets: ['icon.svg', 'favicon-48.png', 'apple-touch-icon.png', 'notify-sw.js'],
         manifest: {
           id: './',
-          name: 'DeudaFlow · Préstamos',
-          short_name: 'DeudaFlow',
+          name: 'Preztame · Préstamos',
+          short_name: 'Preztame',
           description: 'Registro de préstamos y abonos sincronizado con Google Sheets.',
           lang: 'es',
           dir: 'ltr',
@@ -44,6 +44,8 @@ export default defineConfig(() => {
           // App shell works offline; data comes from our own local cache + outbox.
           globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
           navigateFallback: 'index.html',
+          // Due-date reminders (periodic background sync + notification clicks).
+          importScripts: ['notify-sw.js'],
           cleanupOutdatedCaches: true,
           runtimeCaching: [
             {

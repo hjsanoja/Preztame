@@ -5,18 +5,47 @@ export interface LedgerData {
   deudas: Debt[];
   pagos: Payment[];
   clientLimits: Record<string, number>;
+  // People who use the app (accounts). Empty = derive from the data.
+  usuarios: string[];
+  // Client list ("Clientes" sheet). New names are added automatically.
+  clientes: string[];
 }
+
+export type DebtChanges = Partial<Pick<Debt, 'cuenta' | 'contacto' | 'tipo' | 'descripcion' | 'fecha' | 'mesPago' | 'tasaCambio' | 'monto'>>;
 
 export type LedgerOp =
   | { action: 'addDebt'; debt: Debt }
   | { action: 'addPayment'; payment: Payment }
   | { action: 'deleteDebt'; id: string }
   | { action: 'deletePayment'; id: string }
-  | { action: 'setClientLimit'; contacto: string; limite: number };
+  | { action: 'setClientLimit'; contacto: string; limite: number }
+  | { action: 'updateDebt'; id: string; changes: DebtChanges }
+  | { action: 'setUsers'; usuarios: string[] }
+  | { action: 'renameUser'; from: string; to: string };
 
-export type QueuedOp = LedgerOp & { opId: string; queuedAt: number };
+// What the change log records with every operation.
+export interface OpMeta {
+  by?: string; // who made the change
+  desc?: string; // human readable description
+}
 
-export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {} };
+export type QueuedOp = LedgerOp & OpMeta & { opId: string; queuedAt: number };
+
+// Operations that need Apps Script v7.
+export const V7_ACTIONS: LedgerOp['action'][] = ['updateDebt', 'setUsers', 'renameUser'];
+
+export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [], clientes: [] };
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Adds a client name to the list unless it is already there (any casing).
+export function withClient(clientes: string[], name: string): string[] {
+  const n = name.trim();
+  return !n || clientes.some(c => sameName(c, n)) ? clientes : [...clientes, n];
+}
+
+const paidFor = (pagos: Payment[], debtId: string) =>
+  pagos.filter(p => p.deudaId === debtId).reduce((sum, p) => addMoney(sum, p.monto), 0);
 
 // Aplica una operación sobre los datos. Es la misma regla que sigue el
 // Apps Script, y es idempotente: aplicar dos veces la misma operación no
@@ -25,7 +54,7 @@ export function applyOp(data: LedgerData, op: LedgerOp): LedgerData {
   switch (op.action) {
     case 'addDebt': {
       if (data.deudas.some(d => d.id === op.debt.id)) return data;
-      return { ...data, deudas: [op.debt, ...data.deudas] };
+      return { ...data, deudas: [op.debt, ...data.deudas], clientes: withClient(data.clientes, op.debt.contacto) };
     }
 
     case 'addPayment': {
@@ -76,7 +105,60 @@ export function applyOp(data: LedgerData, op: LedgerOp): LedgerData {
       if (limit > 0) next[name] = limit;
       return { ...data, clientLimits: next };
     }
+
+    case 'updateDebt': {
+      const target = data.deudas.find(d => d.id === op.id);
+      if (!target) return data;
+      const changes = { ...op.changes };
+      if (changes.contacto !== undefined) changes.contacto = changes.contacto.trim();
+      if (changes.monto !== undefined) changes.monto = roundMoney(changes.monto);
+      const updated: Debt = { ...target, ...changes };
+      if (changes.monto !== undefined) {
+        // The balance follows the new amount minus what was already paid.
+        updated.saldo = Math.max(0, subMoney(updated.monto, paidFor(data.pagos, op.id)));
+        updated.estado = updated.saldo <= 0 ? 'saldado' : 'pendiente';
+      }
+      return {
+        ...data,
+        deudas: data.deudas.map(d => (d.id === op.id ? updated : d)),
+        clientes: changes.contacto ? withClient(data.clientes, changes.contacto) : data.clientes
+      };
+    }
+
+    case 'setUsers': {
+      const usuarios = [...new Set(op.usuarios.map(u => u.trim()).filter(Boolean))];
+      return { ...data, usuarios };
+    }
+
+    case 'renameUser': {
+      const from = op.from.trim();
+      const to = op.to.trim();
+      if (!from || !to || from === to) return data;
+      const swap = (v: string) => (v === from ? to : v);
+      return {
+        ...data,
+        usuarios: [...new Set(data.usuarios.map(swap))],
+        deudas: data.deudas.map(d => (d.cuenta === from || d.creadoPor === from ? { ...d, cuenta: swap(d.cuenta), creadoPor: swap(d.creadoPor) } : d)),
+        pagos: data.pagos.map(p => (p.registradoPor === from ? { ...p, registradoPor: to } : p))
+      };
+    }
   }
+}
+
+// The accounts to show: the configured list, or (until one is configured)
+// the original two plus anyone else who appears in the data.
+export function accountsOf(data: LedgerData): string[] {
+  if (data.usuarios.length) return data.usuarios;
+  const list = ['Nina', 'Nando'];
+  data.deudas.forEach(d => { if (d.cuenta && !list.includes(d.cuenta)) list.push(d.cuenta); });
+  return list;
+}
+
+// Clients for the picker: the saved list plus anyone already in a loan.
+export function clientsOf(data: LedgerData): string[] {
+  let list = data.clientes;
+  data.deudas.forEach(d => { list = withClient(list, d.contacto); });
+  return [...list].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 }
 
 export function applyOps(data: LedgerData, ops: LedgerOp[]): LedgerData {

@@ -21,3 +21,14 @@ export function formatVes(n: number): string {
 
 export const initials = (name: string): string =>
   name.trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?';
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+// Today as YYYY-MM-DD in the device's time zone (not UTC).
+export const localDay = (d: Date = new Date()): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+// The month after `d` as YYYY-MM (default payment month for a new loan).
+export const nextMonthKey = (d: Date = new Date()): string => {
+  const n = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return `${n.getFullYear()}-${pad2(n.getMonth() + 1)}`;
+};

@@ -1,4 +1,4 @@
-import { Debt, Payment } from '../types';
+import { ChangeLogEntry, Debt, Payment } from '../types';
 import { LedgerData, QueuedOp } from '../lib/ledger';
 import { normalizeLedger } from '../lib/sheetsApi';
 
@@ -79,9 +79,11 @@ export function getLocalModeData(): LedgerData {
   const deudas = readJson<Debt[]>("df_local_deudas");
   const pagos = readJson<Payment[]>("df_local_pagos");
   const clientLimits = readJson<Record<string, number>>("df_client_limits") || {};
-  if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits });
+  const usuarios = readJson<string[]>("df_local_usuarios") || [];
+  const clientes = readJson<string[]>("df_local_clientes") || [];
+  if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits, usuarios, clientes });
 
-  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {} };
+  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {}, usuarios: [], clientes: [] };
   saveLocalModeData(seeded);
   return seeded;
 }
@@ -90,6 +92,17 @@ export function saveLocalModeData(data: LedgerData) {
   writeJson("df_local_deudas", data.deudas);
   writeJson("df_local_pagos", data.pagos);
   writeJson("df_client_limits", data.clientLimits);
+  writeJson("df_local_usuarios", data.usuarios);
+  writeJson("df_local_clientes", data.clientes);
+}
+
+// Local-mode change log (Sheets mode keeps it in the "Historial" sheet).
+export function getLocalLog(): ChangeLogEntry[] {
+  return readJson<ChangeLogEntry[]>("df_local_log") || [];
+}
+
+export function appendLocalLog(entry: ChangeLogEntry) {
+  writeJson("df_local_log", [entry, ...getLocalLog()].slice(0, 500));
 }
 
 // ---------------- Google Sheets mode ----------------
@@ -99,6 +112,7 @@ export function saveLocalModeData(data: LedgerData) {
 export interface SheetsCache {
   data: LedgerData;
   version: string | null;
+  apiVersion?: number;
   syncedAt: number;
 }
 
@@ -161,4 +175,17 @@ export function loadDraft(key: "debt_draft" | "payment_draft"): any | null {
 
 export function clearDraft(key: "debt_draft" | "payment_draft") {
   localStorage.removeItem(`df_draft_${key}`);
+}
+
+// Saves a file. The link stays in the page until the browser has picked up
+// the download, so the file keeps its name.
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
 }

@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { CalendarClock, ChevronRight, CircleAlert, HandCoins, PiggyBank, Plus, TrendingUp, Wallet, X } from 'lucide-react';
 import { Debt, Payment } from '../types';
-import { activeMonths, agingBuckets, flowByMonth, outstandingByMonth, pendingByTag, summarize, topDebtors } from '../lib/analytics';
+import { activeMonths, agingBuckets, byPaymentMonth, monthsAround, outstandingByMonth, pendingByTag, summarize, topDebtors } from '../lib/analytics';
 import { getDueStatus } from '../lib/dueStatus';
 import { formatUsd, formatUsdCompact } from '../lib/format';
 import { tagColorVar, tagLabel } from '../lib/tags';
@@ -13,16 +13,16 @@ import { readChartColors, ResolvedTheme } from '../hooks/useTheme';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Avatar, DueChip, ProgressBar } from './ui';
 import UpcomingDueWidget from './UpcomingDueWidget';
-import NinaVsNandoComparison from './NinaVsNandoComparison';
-import ExchangeRateCalculator from './ExchangeRateCalculator';
+import MonthDebtors from './MonthDebtors';
 
 interface DashboardProps {
   theme: ResolvedTheme;
   deudas: Debt[];
   pagos: Payment[];
-  accountView: 'Ambos' | 'Nina' | 'Nando';
+  accountView: string;
   onOpenNewDebt: () => void;
   onOpenDetails: (id: string) => void;
+  onOpenPerson?: (name: string) => void;
 }
 
 const shortMonth = (key: string) => {
@@ -92,7 +92,7 @@ function StatTile({ icon: Icon, label, value, sub, tone, onClick }: {
   );
 }
 
-export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNewDebt, onOpenDetails }: DashboardProps) {
+export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNewDebt, onOpenDetails, onOpenPerson }: DashboardProps) {
   const [drill, setDrill] = useState<{ title: string; ids: string[] } | null>(null);
   const [flowTable, setFlowTable] = useState(false);
   const today = useMemo(() => new Date(), []);
@@ -108,7 +108,7 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
   const s = useMemo(() => summarize(viewDeudas, viewPagos, today), [viewDeudas, viewPagos, today]);
   const months = useMemo(() => activeMonths(viewDeudas, 12, today), [viewDeudas, today]);
   const outstanding = useMemo(() => outstandingByMonth(viewDeudas, viewPagos, months), [viewDeudas, viewPagos, months]);
-  const flow = useMemo(() => flowByMonth(viewDeudas, viewPagos, months.slice(-6)), [viewDeudas, viewPagos, months]);
+  const flow = useMemo(() => byPaymentMonth(viewDeudas, monthsAround(today, 4, 1)), [viewDeudas, today]);
   const aging = useMemo(() => agingBuckets(viewDeudas, today), [viewDeudas, today]);
   const byTag = useMemo(() => pendingByTag(viewDeudas), [viewDeudas]);
   const top = useMemo(() => topDebtors(viewDeudas, 5), [viewDeudas]);
@@ -167,6 +167,9 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
         <StatTile icon={HandCoins} tone="warning" label="Cobrado este mes" value={formatUsd(s.cobradoMes)} sub={formatMonthName(months[months.length - 1])} />
       </div>
 
+      {/* Who has to pay in a month (default: this month) */}
+      <MonthDebtors deudas={viewDeudas} today={today} onOpenPerson={onOpenPerson} onOpenDetails={onOpenDetails} />
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
 
         {/* Outstanding balance over time (single series: title names it) */}
@@ -196,7 +199,7 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
           <ol className="space-y-3">
             {top.map(t => (
               <li key={t.name}>
-                <button type="button" onClick={() => setDrill({ title: t.name, ids: t.debtIds })} className="m3-state w-full rounded-2xl p-2 -m-2 flex items-center gap-3 text-left cursor-pointer">
+                <button type="button" onClick={() => (onOpenPerson ? onOpenPerson(t.name) : setDrill({ title: t.name, ids: t.debtIds }))} className="m3-state w-full rounded-2xl p-2 -m-2 flex items-center gap-3 text-left cursor-pointer">
                   <Avatar name={t.name} size="sm" />
                   <span className="flex-1 min-w-0">
                     <span className="flex items-baseline justify-between gap-2">
@@ -214,11 +217,11 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
           </ol>
         </Card>
 
-        {/* Lent vs recovered per month (2 series: legend + table view) */}
+        {/* What was due each payment month: collected + pending (stacked) */}
         <Card
           className="xl:col-span-2"
-          title="Prestado y cobrado"
-          subtitle="Últimos 6 meses"
+          title="Cobros por mes de pago"
+          subtitle="Lo que vencía cada mes: cuánto se cobró y cuánto falta"
           action={
             <button type="button" onClick={() => setFlowTable(v => !v)} aria-pressed={flowTable}
               className="m3-state h-10 px-3 rounded-full text-sm font-semibold text-primary cursor-pointer shrink-0">
@@ -227,18 +230,19 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
           }
         >
           <div className="flex gap-4 text-sm mb-3" aria-hidden={flowTable}>
-            <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm" style={{ background: colors.series[0] }} />Prestado</span>
             <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm" style={{ background: colors.series[2] }} />Cobrado</span>
+            <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm" style={{ background: colors.series[1] }} />Pendiente</span>
           </div>
           {flowTable ? (
             <table className="w-full text-sm tabular-nums">
-              <thead><tr className="text-on-surface-variant text-left"><th className="py-2 font-medium">Mes</th><th className="py-2 font-medium text-right">Prestado</th><th className="py-2 font-medium text-right">Cobrado</th></tr></thead>
+              <thead><tr className="text-on-surface-variant text-left"><th className="py-2 font-medium">Mes de pago</th><th className="py-2 font-medium text-right">Prestado</th><th className="py-2 font-medium text-right">Cobrado</th><th className="py-2 font-medium text-right">Pendiente</th></tr></thead>
               <tbody>
                 {flow.map(r => (
                   <tr key={r.mes} className="border-t border-outline-variant/60">
                     <td className="py-2">{formatMonthName(r.mes)}</td>
-                    <td className="py-2 text-right">{formatUsd(r.prestado)}</td>
+                    <td className="py-2 text-right">{formatUsd(r.total)}</td>
                     <td className="py-2 text-right">{formatUsd(r.cobrado)}</td>
+                    <td className="py-2 text-right">{formatUsd(r.pendiente)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -246,13 +250,13 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
           ) : (
             <div className="h-60 sm:h-72 -ml-2">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={flow} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="24%">
+                <BarChart data={flow} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barCategoryGap="28%">
                   <CartesianGrid vertical={false} stroke={colors.grid} />
                   <XAxis dataKey="mes" tickFormatter={shortMonth} tick={axisTick} tickLine={false} axisLine={{ stroke: colors.axis }} />
                   <YAxis tickFormatter={formatUsdCompact} tick={axisTick} tickLine={false} axisLine={false} width={48} />
                   <Tooltip content={<ChartTooltip labelFormatter={formatMonthName} />} cursor={{ fill: colors.surfaceHigh, opacity: 0.6 }} />
-                  <Bar dataKey="prestado" name="Prestado" fill={colors.series[0]} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                  <Bar dataKey="cobrado" name="Cobrado" fill={colors.series[2]} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="cobrado" name="Cobrado" stackId="mes" fill={colors.series[2]} stroke={colors.surface} strokeWidth={2} maxBarSize={44} />
+                  <Bar dataKey="pendiente" name="Pendiente" stackId="mes" fill={colors.series[1]} stroke={colors.surface} strokeWidth={2} radius={[4, 4, 0, 0]} maxBarSize={44} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -314,12 +318,8 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
         </Card>
       </div>
 
-      {/* Agenda + accounts + exchange rate */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <UpcomingDueWidget deudas={viewDeudas} onOpenDetails={onOpenDetails} />
-        <NinaVsNandoComparison deudas={deudas} />
-        <ExchangeRateCalculator deudas={viewDeudas} />
-      </div>
+      {/* Upcoming due dates */}
+      <UpcomingDueWidget deudas={viewDeudas} onOpenDetails={onOpenDetails} />
 
       {drill && (
         <DrillSheet

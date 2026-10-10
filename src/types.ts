@@ -1,6 +1,6 @@
 export interface Debt {
   id: string; // ID of the debt
-  cuenta: 'Nina' | 'Nando'; // Account owner
+  cuenta: string; // Account owner (one of the configured users)
   contacto: string; // Customer who owes the money (Juan Perez, Mamá, etc.)
   tipo: string; // e.g. "favor" / "negocio"
   descripcion: string; // Detail note
@@ -20,6 +20,19 @@ export interface Payment {
   monto: number; // Amount paid
   nota: string; // Description/Reference
   registradoPor: string; // Who authorized it
+  moneda?: 'USD' | 'VES'; // Currency the payment was received in
+  tasaCambio?: number; // Bs per USD on the payment day (VES payments)
+  montoBs?: number; // Amount received in Bs (VES payments)
+}
+
+// Entry of the change log ("Historial de cambios").
+export interface ChangeLogEntry {
+  fecha: string; // ISO timestamp of when the change was made
+  usuario: string;
+  accion: string;
+  refId: string;
+  detalle: string;
+  pendiente?: boolean; // not yet confirmed by Google Sheets
 }
 
 export interface ChartDataPoint {

@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { AlarmClock, CalendarClock, CalendarDays, CheckCircle2, CircleAlert, CircleHelp } from 'lucide-react';
 import { DueStatus } from '../lib/dueStatus';
 import { initials } from '../lib/format';
@@ -8,7 +9,7 @@ const AVATAR_TONES = [
   'bg-tertiary-container text-on-tertiary-container',
   'bg-secondary-container text-on-secondary-container',
   'bg-success-container text-on-success-container',
-  'bg-nando-container text-on-nando-container'
+  'bg-account-2-container text-on-account-2-container'
 ];
 
 function toneFor(name: string) {
@@ -57,11 +58,34 @@ export function DueChip({ status, className = '' }: { status: DueStatus; classNa
   );
 }
 
-export function AccountChip({ cuenta }: { cuenta: 'Nina' | 'Nando' }) {
+// ---------------- Accounts (people who use the app) ----------------
+
+const ACCOUNT_TONES = [
+  { container: 'bg-account-1-container text-on-account-1-container', solid: 'bg-account-1 text-on-account-1', dot: 'bg-account-1' },
+  { container: 'bg-account-2-container text-on-account-2-container', solid: 'bg-account-2 text-on-account-2', dot: 'bg-account-2' },
+  { container: 'bg-account-3-container text-on-account-3-container', solid: 'bg-account-3 text-on-account-3', dot: 'bg-account-3' },
+  { container: 'bg-account-4-container text-on-account-4-container', solid: 'bg-account-4 text-on-account-4', dot: 'bg-account-4' }
+];
+
+const AccountsContext = createContext<string[]>(['Nina', 'Nando']);
+export const AccountsProvider = AccountsContext.Provider;
+export const useAccounts = () => useContext(AccountsContext);
+
+// Each account keeps its color by position in the configured list.
+export function accountTone(cuenta: string, accounts: string[]) {
+  let i = accounts.indexOf(cuenta);
+  if (i < 0) {
+    let h = 0;
+    for (let k = 0; k < cuenta.length; k++) h = (h * 31 + cuenta.charCodeAt(k)) >>> 0;
+    i = h;
+  }
+  return ACCOUNT_TONES[i % ACCOUNT_TONES.length];
+}
+
+export function AccountChip({ cuenta }: { cuenta: string }) {
+  const accounts = useAccounts();
   return (
-    <span className={`inline-flex items-center h-6 px-2 rounded-md text-[11px] font-bold ${
-      cuenta === 'Nina' ? 'bg-nina-container text-on-nina-container' : 'bg-nando-container text-on-nando-container'
-    }`}>
+    <span className={`inline-flex items-center h-6 px-2 rounded-md text-[11px] font-bold whitespace-nowrap ${accountTone(cuenta, accounts).container}`}>
       {cuenta}
     </span>
   );
@@ -74,5 +98,22 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
       className="h-1.5 w-full rounded-full bg-surface-high overflow-hidden">
       <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-[var(--ease-emphasized)]" style={{ width: `${pct}%` }} />
     </div>
+  );
+}
+
+const PUNCTUALITY_STYLE = {
+  puntual: { cls: 'bg-success-container text-on-success-container', Icon: CheckCircle2 },
+  'a-veces': { cls: 'bg-warning-container text-on-warning-container', Icon: AlarmClock },
+  atrasado: { cls: 'bg-error-container text-on-error-container', Icon: CircleAlert },
+  'sin-historial': { cls: 'bg-surface-container text-on-surface-variant', Icon: CircleHelp }
+} as const;
+
+export function PunctualityChip({ value, label }: { value: keyof typeof PUNCTUALITY_STYLE; label: string }) {
+  const { cls, Icon } = PUNCTUALITY_STYLE[value];
+  return (
+    <span className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-xs font-semibold whitespace-nowrap ${cls}`}>
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      {label}
+    </span>
   );
 }

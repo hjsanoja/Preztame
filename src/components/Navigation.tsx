@@ -1,11 +1,12 @@
-import { HandCoins, History, LayoutDashboard, LucideIcon, Moon, Plus, Settings, Sun, SunMoon } from 'lucide-react';
+import { HandCoins, History, LayoutDashboard, LucideIcon, Moon, Plus, Settings, Sun, SunMoon, UsersRound } from 'lucide-react';
 import { ThemePreference } from '../hooks/useTheme';
 
-export type TabId = 'resumen' | 'deudas' | 'movimientos' | 'config';
+export type TabId = 'resumen' | 'deudas' | 'personas' | 'movimientos' | 'config';
 
 export const DESTINATIONS: { id: TabId; label: string; icon: LucideIcon }[] = [
   { id: 'resumen', label: 'Resumen', icon: LayoutDashboard },
   { id: 'deudas', label: 'Préstamos', icon: HandCoins },
+  { id: 'personas', label: 'Personas', icon: UsersRound },
   { id: 'movimientos', label: 'Historial', icon: History },
   { id: 'config', label: 'Ajustes', icon: Settings }
 ];
@@ -22,7 +23,7 @@ export function NavigationBar({ current, onNavigate }: NavProps) {
       aria-label="Secciones"
       className="md:hidden fixed inset-x-0 bottom-0 z-40 bg-surface-container border-t border-outline-variant/60 pb-[env(safe-area-inset-bottom)]"
     >
-      <ul className="grid grid-cols-4 h-20">
+      <ul className="grid grid-cols-5 h-20">
         {DESTINATIONS.map(({ id, label, icon: Icon }) => {
           const active = current === id;
           return (
@@ -34,7 +35,7 @@ export function NavigationBar({ current, onNavigate }: NavProps) {
                 className="flex-1 flex flex-col items-center justify-center gap-1 cursor-pointer group"
               >
                 <span
-                  className={`m3-state flex items-center justify-center h-8 w-16 rounded-full transition-colors duration-300 ease-[var(--ease-emphasized)] ${
+                  className={`m3-state flex items-center justify-center h-8 w-14 rounded-full transition-colors duration-300 ease-[var(--ease-emphasized)] ${
                     active ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant'
                   }`}
                 >
@@ -70,7 +71,7 @@ export function NavigationRail({ current, onNavigate, onNewDebt, theme, onThemeC
       aria-label="Secciones"
       className="hidden md:flex fixed inset-y-0 left-0 z-40 w-24 flex-col items-center gap-6 bg-surface border-r border-outline-variant/50 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
     >
-      <img src="./icon.svg" alt="DeudaFlow" className="h-10 w-10 rounded-xl" />
+      <img src="./icon.svg" alt="Preztame" className="h-10 w-10 rounded-xl" />
       <button
         type="button"
         onClick={onNewDebt}

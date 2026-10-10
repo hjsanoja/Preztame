@@ -10,7 +10,11 @@ import { useLedger } from './hooks/useLedger';
 import { usePwa } from './hooks/usePwa';
 import InstallBanner from './components/InstallBanner';
 import { parseAutoConfigLink } from './lib/autoConfig';
-import { newId } from './lib/ledger';
+import { accountsOf, clientsOf, DebtChanges, LedgerOp, newId } from './lib/ledger';
+import { formatUsd, formatVes } from './lib/format';
+import { personKey, summarizePeople } from './lib/people';
+import { formatMonthName } from './utils/storage';
+import { tagLabel } from './lib/tags';
 import { roundMoney, subMoney } from './lib/money';
 import { normalizeLedger } from './lib/sheetsApi';
 
@@ -37,6 +41,15 @@ import {
 import { DESTINATIONS, NavigationBar, NavigationRail, TabId } from './components/Navigation';
 import { useTheme } from './hooks/useTheme';
 import { useFocusTrap } from './hooks/useFocusTrap';
+import { useDueNotifications } from './hooks/useDueNotifications';
+import { AccountsProvider, accountTone } from './components/ui';
+import PersonSheet from './components/PersonSheet';
+import UsersSettings from './components/UsersSettings';
+import RemindersSettings from './components/RemindersSettings';
+import BackupSettings from './components/BackupSettings';
+import SecuritySettings from './components/SecuritySettings';
+import LockScreen from './components/LockScreen';
+import { useAppLock } from './hooks/useAppLock';
 
 // Tabs are loaded on demand so the first paint does not wait for charts.
 const loadDashboard = () => import('./components/Dashboard');
@@ -47,6 +60,10 @@ const Dashboard = lazy(loadDashboard);
 const DebtsList = lazy(loadDebtsList);
 const TransactionsHistory = lazy(loadHistory);
 const SetupGuide = lazy(loadSetupGuide);
+const loadPeople = () => import('./components/PeopleList');
+const PeopleList = lazy(loadPeople);
+const ChangeLogView = lazy(() => import('./components/ChangeLogView'));
+const StatementSheet = lazy(() => import('./components/StatementSheet'));
 
 interface Toast {
   id: string;
@@ -65,7 +82,7 @@ interface InitialConfig {
   source: 'sheets' | 'local';
   url: string;
   token: string;
-  user: 'Nina' | 'Nando';
+  user: string;
   autoConfigured: boolean;
   // Home-screen shortcut (manifest "shortcuts"): ?accion=nuevo|abono|prestamos
   accion: string | null;
@@ -82,7 +99,7 @@ function readInitialConfig(): InitialConfig {
   let source = getStoredSource();
   let url = getStoredSheetUrl();
   let token = getStoredToken();
-  let user: 'Nina' | 'Nando' = localStorage.getItem('df_active_user') === 'Nando' ? 'Nando' : 'Nina';
+  let user: string = localStorage.getItem('df_active_user') || '';
 
   if (paramUrl) {
     url = paramUrl;
@@ -94,8 +111,8 @@ function readInitialConfig(): InitialConfig {
     token = paramToken;
     saveToken(token);
   }
-  if (paramUser === 'Nina' || paramUser === 'Nando') {
-    user = paramUser;
+  if (paramUser && paramUser.trim()) {
+    user = paramUser.trim();
     localStorage.setItem('df_active_user', paramUser);
   }
   if (paramUrl || paramToken || paramUser || accion) {
@@ -126,11 +143,12 @@ export default function App() {
   // Navigation Tabs: 'resumen' | 'deudas' | 'movimientos' | 'config'
   const [currentTab, setCurrentTab] = useState<TabId>('resumen');
   const theme = useTheme();
+  const appLock = useAppLock();
 
-  const [activeUser, setActiveUser] = useState<'Nina' | 'Nando'>(initial.user);
-  const [accountView, setAccountView] = useState<'Ambos' | 'Nina' | 'Nando'>(() => {
+  const [activeUser, setActiveUser] = useState<string>(initial.user);
+  const [accountView, setAccountView] = useState<string>(() => {
     const saved = localStorage.getItem("df_account_view");
-    return saved === 'Nina' || saved === 'Nando' ? saved : 'Ambos';
+    return saved || 'Ambos';
   });
 
   // Configuration Settings
@@ -144,6 +162,11 @@ export default function App() {
   const [isAbonoFormOpen, setIsAbonoFormOpen] = useState(false);
   const [isQuickSearchOpen, setIsQuickSearchOpen] = useState(false);
   const [abonoDebtId, setAbonoDebtId] = useState<string | null>(null);
+  const [editingDebtId, setEditingDebtId] = useState<string | null>(null);
+  const [newDebtContact, setNewDebtContact] = useState<string | undefined>(undefined);
+  const [openPersonKey, setOpenPersonKey] = useState<string | null>(null);
+  const [statementKey, setStatementKey] = useState<string | null>(null);
+  const [historyView, setHistoryView] = useState<'movimientos' | 'cambios'>('movimientos');
 
   // Custom UI elements (Toast and Confirm boxes)
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -190,12 +213,28 @@ export default function App() {
     }
   });
   const { deudas, pagos, clientLimits } = ledger.data;
+  const accounts = accountsOf(ledger.data);
+  // The person registering on this device (falls back to the first account).
+  const currentUser = accounts.includes(activeUser) ? activeUser : accounts[0];
+  const currentView = accountView === 'Ambos' || accounts.includes(accountView) ? accountView : 'Ambos';
+  const people = React.useMemo(() => summarizePeople(deudas, pagos), [deudas, pagos]);
+  const openPerson = openPersonKey ? people.find(p => p.key === openPersonKey) ?? null : null;
+  const statementPerson = statementKey ? people.find(p => p.key === statementKey) ?? null : null;
+  const notifications = useDueNotifications(deudas, ledger.hasLoaded);
+
+  // Every change goes through here: stamped with who made it and a readable
+  // description for the change log.
+  const act = (op: LedgerOp, desc: string): boolean => {
+    const ok = ledger.dispatch(op, { by: currentUser, desc });
+    if (!ok) showToast('Esta función necesita el Apps Script v7. Cópialo desde Ajustes y publica una nueva versión.', 'warning');
+    return ok;
+  };
   const syncStatus = ledger.status;
 
   const confirmRef = useFocusTrap<HTMLDivElement>(confirm.isOpen);
 
   const pwa = usePwa({
-    onOfflineReady: () => showToast("DeudaFlow ya funciona sin conexión en este dispositivo.", "success")
+    onOfflineReady: () => showToast("Preztame ya funciona sin conexión en este dispositivo.", "success")
   });
 
   useEffect(() => {
@@ -210,7 +249,7 @@ export default function App() {
 
   // Warm up the other tabs once the browser is idle.
   useEffect(() => {
-    const prefetch = () => { loadDashboard(); loadDebtsList(); loadHistory(); loadSetupGuide(); };
+    const prefetch = () => { loadDashboard(); loadDebtsList(); loadHistory(); loadSetupGuide(); loadPeople(); };
     const w = window as any;
     if (typeof w.requestIdleCallback === 'function') {
       const id = w.requestIdleCallback(prefetch, { timeout: 4000 });
@@ -220,9 +259,23 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  const lockedRef = React.useRef(appLock.locked);
+  lockedRef.current = appLock.locked;
+  const layersRef = React.useRef({ confirm: false, statement: false, abono: false, debtForm: false, details: false, person: false });
+  layersRef.current = {
+    confirm: confirm.isOpen,
+    statement: statementKey !== null,
+    abono: isAbonoFormOpen,
+    debtForm: isDebtFormOpen || editingDebtId !== null,
+    details: selectedDetailsId !== null,
+    person: openPersonKey !== null
+  };
+
   // Global Keyboard shortcuts handling
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
+      // While locked, the keyboard belongs to the lock screen.
+      if (lockedRef.current) return;
       // Cmd+K or Ctrl+K anytime (even when editing)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -231,12 +284,16 @@ export default function App() {
       }
 
       // Modal universal close (also while typing inside a form)
+      // Escape closes only the topmost layer.
       if (e.key === "Escape") {
-        setIsDebtFormOpen(false);
-        setIsAbonoFormOpen(false);
-        setIsQuickSearchOpen(false);
-        setSelectedDetailsId(null);
-        setConfirm(prev => ({ ...prev, isOpen: false }));
+        const l = layersRef.current;
+        if (l.confirm) setConfirm(prev => ({ ...prev, isOpen: false }));
+        else if (l.statement) setStatementKey(null);
+        else if (l.abono) setIsAbonoFormOpen(false);
+        else if (l.debtForm) { setIsDebtFormOpen(false); setEditingDebtId(null); setNewDebtContact(undefined); }
+        else if (l.details) setSelectedDetailsId(null);
+        else if (l.person) setOpenPersonKey(null);
+        else setIsQuickSearchOpen(false);
         return;
       }
 
@@ -247,10 +304,8 @@ export default function App() {
       if (isEditing || e.metaKey || e.ctrlKey || e.altKey) return;
 
       // Quick tab swaps 1-4
-      if (e.key === "1") { e.preventDefault(); setCurrentTab('resumen'); }
-      if (e.key === "2") { e.preventDefault(); setCurrentTab('deudas'); }
-      if (e.key === "3") { e.preventDefault(); setCurrentTab('movimientos'); }
-      if (e.key === "4") { e.preventDefault(); setCurrentTab('config'); }
+      const tab = DESTINATIONS[Number(e.key) - 1];
+      if (tab) { e.preventDefault(); setCurrentTab(tab.id); }
 
       // "N" for registering new debt
       if (e.key.toLowerCase() === "n") {
@@ -264,13 +319,13 @@ export default function App() {
   }, []);
 
   // Update Operating User toggles
-  const handleUserToggle = (user: 'Nina' | 'Nando') => {
+  const handleUserToggle = (user: string) => {
     setActiveUser(user);
     localStorage.setItem("df_active_user", user);
   };
 
   // Change primary account filtration views
-  const handleAccountViewToggle = (view: 'Ambos' | 'Nina' | 'Nando') => {
+  const handleAccountViewToggle = (view: string) => {
     setAccountView(view);
     localStorage.setItem("df_account_view", view);
   };
@@ -299,7 +354,7 @@ export default function App() {
   const handleApplyAutoConfigLink = (link: string): boolean => {
     const parsed = parseAutoConfigLink(link);
     if (!parsed) {
-      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde DeudaFlow.", "warning");
+      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde Preztame.", "warning");
       return false;
     }
     if (parsed.user) handleUserToggle(parsed.user);
@@ -323,7 +378,7 @@ export default function App() {
 
   // Set client credit limits
   const handleSetClientLimit = (contacto: string, limit: number) => {
-    ledger.dispatch({ action: 'setClientLimit', contacto, limite: limit });
+    act({ action: 'setClientLimit', contacto, limite: limit }, limit > 0 ? `Límite de crédito de ${contacto}: ${formatUsd(limit)}` : `Quitó el límite de crédito de ${contacto}`);
     if (limit <= 0) {
       showToast(`Límite de crédito removido para ${contacto}.`, "success");
     } else {
@@ -333,7 +388,7 @@ export default function App() {
 
   // Restore imported backup data (local mode only: Sheets is the source of truth)
   const handleImportBackup = (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => {
-    const ok = ledger.replaceLocalData(normalizeLedger({ deudas: importedDeudas, pagos: importedPagos, clientLimits: importedLimits }));
+    const ok = ledger.replaceLocalData(normalizeLedger({ deudas: importedDeudas, pagos: importedPagos, clientLimits: importedLimits, usuarios: ledger.data.usuarios }));
     if (ok) {
       showToast("¡Copia de seguridad importada con éxito!", "success");
     } else {
@@ -352,9 +407,9 @@ export default function App() {
       monto,
       saldo: monto,
       estado: 'pendiente',
-      creadoPor: activeUser
+      creadoPor: currentUser
     };
-    ledger.dispatch({ action: 'addDebt', debt: newDebt });
+    act({ action: 'addDebt', debt: newDebt }, `Préstamo a ${newDebt.contacto} por ${formatUsd(monto)} · ${newDebt.cuenta}`);
     showToast("Préstamo registrado.", "success");
   };
 
@@ -365,9 +420,10 @@ export default function App() {
       ...payPayload,
       id: newId('p'),
       monto: roundMoney(payPayload.monto),
-      registradoPor: activeUser
+      registradoPor: currentUser
     };
-    ledger.dispatch({ action: 'addPayment', payment: newPayment });
+    const inBs = newPayment.moneda === 'VES' && newPayment.montoBs ? ` (${formatVes(newPayment.montoBs)} a ${newPayment.tasaCambio})` : '';
+    act({ action: 'addPayment', payment: newPayment }, `Abono de ${formatUsd(newPayment.monto)}${inBs} de ${target?.contacto ?? 'un cliente'}`);
 
     if (target && subMoney(target.saldo, newPayment.monto) <= 0) {
       import('canvas-confetti')
@@ -388,7 +444,7 @@ export default function App() {
       "¿Eliminar Préstamo Completo?",
       `Estás a punto de borrar el préstamo registrado a "${target.contacto}" por ${formatUsd0(target.monto)}. Esta acción también anula todos sus abonos asociados. ¿Deseas continuar?`,
       () => {
-        ledger.dispatch({ action: 'deleteDebt', id });
+        act({ action: 'deleteDebt', id }, `Eliminó el préstamo de ${target.contacto} por ${formatUsd(target.monto)}`);
         setSelectedDetailsId(prev => (prev === id ? null : prev));
         showToast("Préstamo eliminado.", "info");
       }
@@ -404,10 +460,53 @@ export default function App() {
       "¿Anular este Abono?",
       `Estás por deshacer el abono por valor de ${formatUsd0(target.monto)}. El saldo pendiente de la deuda se incrementará de nuevo.`,
       () => {
-        ledger.dispatch({ action: 'deletePayment', id });
+        const debtName = deudas.find(d => d.id === target.deudaId)?.contacto ?? 'un cliente';
+        act({ action: 'deletePayment', id }, `Anuló un abono de ${formatUsd(target.monto)} de ${debtName}`);
         showToast("Abono anulado.", "info");
       }
     );
+  };
+
+  // 5. EDIT LOAN
+  const FIELD_LABEL: Record<string, (v: any) => string> = {
+    monto: v => `monto ${formatUsd(v)}`,
+    contacto: v => `cliente ${v}`,
+    cuenta: v => `cuenta ${v}`,
+    tipo: v => `etiqueta ${tagLabel(v)}`,
+    descripcion: v => `concepto "${v}"`,
+    fecha: v => `fecha ${v}`,
+    mesPago: v => `mes de pago ${formatMonthName(v)}`,
+    tasaCambio: v => `tasa ${v}`
+  };
+  const handleUpdateDebt = (id: string, changes: DebtChanges) => {
+    const target = deudas.find(d => d.id === id);
+    if (!target) return;
+    const summary = Object.entries(changes).map(([k, v]) => FIELD_LABEL[k]?.(v) ?? k).join(', ');
+    if (act({ action: 'updateDebt', id, changes }, `Editó el préstamo de ${target.contacto}: ${summary}`)) {
+      showToast('Préstamo actualizado.', 'success');
+    }
+  };
+
+  // 6. PEOPLE WHO USE THE APP
+  const handleSetUsers = (usuarios: string[]) => {
+    const added = usuarios.filter(u => !accounts.includes(u));
+    const removed = accounts.filter(u => !usuarios.includes(u));
+    const desc = [added.length ? `agregó a ${added.join(', ')}` : '', removed.length ? `quitó a ${removed.join(', ')}` : ''].filter(Boolean).join(' y ');
+    act({ action: 'setUsers', usuarios }, `Personas de la app: ${desc || 'reordenó la lista'}`);
+  };
+  const handleRenameUser = (from: string, to: string) => {
+    // Make sure the list exists in the sheet before renaming inside it.
+    if (!ledger.data.usuarios.length && !act({ action: 'setUsers', usuarios: accounts }, `Personas de la app: ${accounts.join(', ')}`)) return;
+    if (act({ action: 'renameUser', from, to }, `Renombró a ${from} como ${to}`)) {
+      if (activeUser === from) handleUserToggle(to);
+      if (accountView === from) handleAccountViewToggle(to);
+      showToast(`${from} ahora se llama ${to}.`, 'success');
+    }
+  };
+
+  const handleOpenPersonByName = (name: string) => {
+    setSelectedDetailsId(null);
+    setOpenPersonKey(personKey(name));
   };
 
   const handleOpenAbonoDirect = (id: string) => {
@@ -448,6 +547,15 @@ export default function App() {
     : 'Modo local';
 
   return (
+    <AccountsProvider value={accounts}>
+    {appLock.locked && (
+      <LockScreen
+        hasBiometric={!!appLock.settings.credentialId}
+        pinLength={appLock.settings.pinLength}
+        onPin={appLock.unlockWithPin}
+        onBiometric={appLock.unlockWithBiometric}
+      />
+    )}
     <div className="bg-surface text-on-surface min-h-dvh font-sans antialiased selection:bg-primary/20 md:pl-24">
 
       <NavigationRail
@@ -463,7 +571,7 @@ export default function App() {
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
           <img src="./icon.svg" alt="" className="h-9 w-9 rounded-xl md:hidden" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant leading-none">DeudaFlow</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant leading-none">Preztame</p>
             <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{currentTitle}</h1>
           </div>
 
@@ -480,39 +588,49 @@ export default function App() {
             <kbd className="hidden lg:inline text-[11px] font-semibold border border-outline-variant rounded-md px-1.5 py-0.5">⌘K</kbd>
           </button>
 
-          {/* Who is registering (Nina / Nando) */}
-          <div role="radiogroup" aria-label="Operando como" className="hidden sm:flex items-center h-10 rounded-full border border-outline-variant overflow-hidden">
-            {(['Nina', 'Nando'] as const).map(u => (
-              <button
-                key={u}
-                type="button"
-                role="radio"
-                aria-checked={activeUser === u}
-                onClick={() => handleUserToggle(u)}
-                className={`m3-state h-full px-4 flex items-center gap-1.5 text-sm font-semibold cursor-pointer ${
-                  activeUser === u
-                    ? (u === 'Nina' ? 'bg-nina-container text-on-nina-container' : 'bg-nando-container text-on-nando-container')
-                    : 'text-on-surface-variant'
-                }`}
+          {/* Who is registering on this device */}
+          {accounts.length <= 3 ? (
+            <div role="radiogroup" aria-label="Registrando como" className="hidden sm:flex items-center h-10 rounded-full border border-outline-variant overflow-hidden">
+              {accounts.map(u => (
+                <button
+                  key={u}
+                  type="button"
+                  role="radio"
+                  aria-checked={currentUser === u}
+                  onClick={() => handleUserToggle(u)}
+                  className={`m3-state h-full px-4 flex items-center gap-1.5 text-sm font-semibold cursor-pointer ${
+                    currentUser === u ? accountTone(u, accounts).container : 'text-on-surface-variant'
+                  }`}
+                >
+                  {currentUser === u && <Check className="h-4 w-4" aria-hidden="true" />}
+                  {u}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <label className="hidden sm:block">
+              <span className="sr-only">Registrando como</span>
+              <select
+                value={currentUser}
+                onChange={e => handleUserToggle(e.target.value)}
+                className={`h-10 px-4 rounded-full text-sm font-semibold border-0 cursor-pointer ${accountTone(currentUser, accounts).container}`}
               >
-                {activeUser === u && <Check className="h-4 w-4" aria-hidden="true" />}
-                {u}
-              </button>
-            ))}
-          </div>
+                {accounts.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </label>
+          )}
           <button
             type="button"
             onClick={() => {
-              const next = activeUser === 'Nina' ? 'Nando' : 'Nina';
+              const next = accounts[(accounts.indexOf(currentUser) + 1) % accounts.length];
+              if (next === currentUser) return;
               handleUserToggle(next);
               showToast(`Ahora registras como ${next}.`, 'info');
             }}
-            aria-label={`Operando como ${activeUser}. Cambiar a ${activeUser === 'Nina' ? 'Nando' : 'Nina'}`}
-            className={`sm:hidden h-10 w-10 rounded-full text-sm font-bold flex items-center justify-center cursor-pointer ${
-              activeUser === 'Nina' ? 'bg-nina-container text-on-nina-container' : 'bg-nando-container text-on-nando-container'
-            }`}
+            aria-label={`Registrando como ${currentUser}. Cambiar de persona`}
+            className={`sm:hidden h-10 w-10 rounded-full text-sm font-bold flex items-center justify-center cursor-pointer ${accountTone(currentUser, accounts).container}`}
           >
-            {activeUser.slice(0, 2)}
+            {currentUser.slice(0, 2)}
           </button>
 
           {/* Sync status */}
@@ -553,9 +671,9 @@ export default function App() {
         {currentTab !== 'config' && (
           <div className="mb-5 flex items-center gap-3">
             <span className="hidden sm:inline text-sm font-medium text-on-surface-variant">Cuenta</span>
-            <div role="radiogroup" aria-label="Filtrar por cuenta" className="flex h-10 w-full sm:w-auto rounded-full border border-outline overflow-hidden">
-              {([['Ambos', 'Ambas'], ['Nina', 'Nina'], ['Nando', 'Nando']] as const).map(([value, label], i) => {
-                const selected = accountView === value;
+            <div role="radiogroup" aria-label="Filtrar por cuenta" className="flex h-10 w-full sm:w-auto rounded-full border border-outline overflow-x-auto [scrollbar-width:none]">
+              {[['Ambos', 'Todas'], ...accounts.map(a => [a, a])].map(([value, label], i) => {
+                const selected = currentView === value;
                 return (
                   <button
                     key={value}
@@ -584,32 +702,68 @@ export default function App() {
               theme={theme.resolved}
               deudas={deudas}
               pagos={pagos}
-              accountView={accountView}
+              accountView={currentView}
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
               onOpenDetails={(id) => setSelectedDetailsId(id)}
+              onOpenPerson={handleOpenPersonByName}
             />
           )}
 
           {currentTab === 'deudas' && (
             <DebtsList 
               deudas={deudas}
-              accountView={accountView}
+              accountView={currentView}
               onOpenDetails={(id) => setSelectedDetailsId(id)}
               onOpenAbono={handleOpenAbonoDirect}
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
               onDeleteDebt={handleDeleteDebt}
+              onEditDebt={(id) => setEditingDebtId(id)}
               onNotify={(m) => showToast(m, 'success')}
             />
           )}
 
+          {currentTab === 'personas' && (
+            <PeopleList deudas={deudas} pagos={pagos} accountView={currentView} onOpenPerson={setOpenPersonKey} />
+          )}
+
           {currentTab === 'movimientos' && (
-            <TransactionsHistory 
-              deudas={deudas}
-              pagos={pagos}
-              accountView={accountView}
-              onDeleteDebt={handleDeleteDebt}
-              onDeletePayment={handleDeletePayment}
-            />
+            <div className="space-y-4">
+              <div role="radiogroup" aria-label="Tipo de historial" className="flex h-10 w-full sm:w-80 rounded-full border border-outline overflow-hidden">
+                {([['movimientos', 'Movimientos'], ['cambios', 'Cambios']] as const).map(([value, label], i) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={historyView === value}
+                    onClick={() => setHistoryView(value)}
+                    className={`m3-state flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold cursor-pointer ${i > 0 ? 'border-l border-outline' : ''} ${
+                      historyView === value ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface'
+                    }`}
+                  >
+                    {historyView === value && <Check className="h-4 w-4" aria-hidden="true" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {historyView === 'movimientos' ? (
+                <TransactionsHistory
+                  deudas={deudas}
+                  pagos={pagos}
+                  accountView={currentView}
+                  onDeleteDebt={handleDeleteDebt}
+                  onDeletePayment={handleDeletePayment}
+                />
+              ) : (
+                <ChangeLogView
+                  mode={isLocalMode ? 'local' : 'sheets'}
+                  url={sheetUrl}
+                  token={sheetToken}
+                  apiVersion={ledger.apiVersion}
+                  pendingOps={ledger.pendingOps}
+                  refreshKey={ledger.lastSyncedAt ?? 0}
+                />
+              )}
+            </div>
           )}
 
           </>}
@@ -620,6 +774,32 @@ export default function App() {
               sheetToken={sheetToken}
               onSaveConnection={handleSaveConnection}
               onApplyAutoConfigLink={handleApplyAutoConfigLink}
+              apiVersion={ledger.apiVersion}
+              extraCards={<>
+                <SecuritySettings
+                  settings={appLock.settings}
+                  userName={currentUser}
+                  setPin={appLock.setPin}
+                  disable={appLock.disable}
+                  enableBiometric={appLock.enableBiometric}
+                  disableBiometric={appLock.disableBiometric}
+                  setTimeoutMin={appLock.setTimeoutMin}
+                  lockNow={appLock.lockNow}
+                  onNotify={showToast}
+                />
+                <UsersSettings accounts={accounts} deudas={deudas} activeUser={currentUser} onSetUsers={handleSetUsers} onRenameUser={handleRenameUser} />
+                <RemindersSettings
+                  mode={isLocalMode ? 'local' : 'sheets'}
+                  url={sheetUrl}
+                  token={sheetToken}
+                  apiVersion={ledger.apiVersion}
+                  isIos={pwa.isIos}
+                  isStandalone={pwa.isStandalone}
+                  notify={notifications}
+                  onNotify={showToast}
+                />
+                <BackupSettings mode={isLocalMode ? 'local' : 'sheets'} url={sheetUrl} token={sheetToken} apiVersion={ledger.apiVersion} onNotify={showToast} />
+              </>}
               themePreference={theme.preference}
               onThemeChange={theme.setPreference}
               pwa={{
@@ -631,7 +811,7 @@ export default function App() {
               onClearSettings={handleClearUrlSettings}
               isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
-              activeUser={activeUser}
+              activeUser={currentUser}
               deudas={deudas}
               pagos={pagos}
               clientLimits={clientLimits}
@@ -656,18 +836,42 @@ export default function App() {
         onClose={() => setSelectedDetailsId(null)}
         onOpenAbono={handleOpenAbonoDirect}
         onDeletePayment={handleDeletePayment}
-        activeUser={activeUser}
+        activeUser={currentUser}
+        onEdit={(id) => { setEditingDebtId(id); }}
+        onOpenPerson={handleOpenPersonByName}
       />
 
       {/* Form modal to register new debt */}
       <DebtFormModal 
-        isOpen={isDebtFormOpen}
-        onClose={() => setIsDebtFormOpen(false)}
+        isOpen={isDebtFormOpen || editingDebtId !== null}
+        onClose={() => { setIsDebtFormOpen(false); setEditingDebtId(null); setNewDebtContact(undefined); }}
         onSubmit={handleAddDebt}
-        activeUser={activeUser}
+        activeUser={currentUser}
         deudas={deudas}
         clientLimits={clientLimits}
+        editing={editingDebtId ? deudas.find(d => d.id === editingDebtId) ?? null : null}
+        onUpdate={handleUpdateDebt}
+        initialContacto={newDebtContact}
+        clients={clientsOf(ledger.data)}
       />
+
+      {/* Person profile and account statement */}
+      {openPerson && (
+        <PersonSheet
+          person={openPerson}
+          limit={Object.entries(clientLimits).find(([k]) => personKey(k) === openPerson.key)?.[1] ?? 0}
+          onClose={() => setOpenPersonKey(null)}
+          onOpenDebt={(id) => setSelectedDetailsId(id)}
+          onNewDebt={(name) => { setNewDebtContact(name); setIsDebtFormOpen(true); }}
+          onStatement={() => setStatementKey(openPerson.key)}
+          onNotify={(m) => showToast(m, 'success')}
+        />
+      )}
+      {statementPerson && (
+        <Suspense fallback={null}>
+          <StatementSheet person={statementPerson} preparedBy={currentUser} onClose={() => setStatementKey(null)} onNotify={(m) => showToast(m, 'info')} />
+        </Suspense>
+      )}
 
       {/* Form modal to register a repayment/abono */}
       <AbonoFormModal 
@@ -679,7 +883,7 @@ export default function App() {
           setAbonoDebtId(null);
         }}
         onSubmit={handleAddPayment}
-        activeUser={activeUser}
+        activeUser={currentUser}
       />
 
       {/* Quick Search Modal (Cmd+K / Ctrl+K) */}
@@ -736,7 +940,7 @@ export default function App() {
           role="status"
           className="fixed z-50 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bottom-[calc(5rem+5.5rem+env(safe-area-inset-bottom))] md:bottom-24 bg-inverse-surface text-inverse-on-surface rounded-xl m3-elevation-3 px-4 py-2 flex items-center gap-2 animate-sheet-in"
         >
-          <span className="text-sm flex-1 py-1">Hay una versión nueva de DeudaFlow.</span>
+          <span className="text-sm flex-1 py-1">Hay una versión nueva de Preztame.</span>
           <button
             type="button"
             onClick={pwa.dismissUpdate}
@@ -789,5 +993,6 @@ export default function App() {
       )}
 
     </div>
+    </AccountsProvider>
   );
 }
