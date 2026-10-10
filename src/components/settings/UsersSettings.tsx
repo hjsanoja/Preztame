@@ -48,7 +48,7 @@ export default function UsersSettings({ accounts, deudas, activeUser, onSetUsers
   };
 
   return (
-    <div className="m3-card rounded-3xl p-6 space-y-4">
+    <div className="m3-card rounded-3xl p-4 sm:p-6 space-y-4">
       <div>
         <h4 className="font-semibold text-on-surface text-base flex items-center">
           <Users className="h-5 w-5 mr-2 text-primary" />

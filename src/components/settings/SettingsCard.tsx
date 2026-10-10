@@ -11,7 +11,7 @@ export function SettingsCard({ icon: Icon, title, description, children, classNa
   tone?: string;
 }) {
   return (
-    <div className={`m3-card rounded-3xl p-6 space-y-4 ${className}`}>
+    <div className={`m3-card rounded-3xl p-4 sm:p-6 space-y-4 ${className}`}>
       <div>
         <h4 className="font-semibold text-on-surface text-base flex items-center">
           <Icon className={`h-5 w-5 mr-2 shrink-0 ${tone}`} aria-hidden="true" />

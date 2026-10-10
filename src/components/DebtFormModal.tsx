@@ -472,7 +472,7 @@ export default function DebtFormModal({
                     <button
                       type="button"
                       onClick={() => setTasaCambio(formatRate(bcvRate))}
-                      className="m3-state h-6 px-2 rounded-full text-primary font-semibold cursor-pointer"
+                      className="m3-state h-9 px-3 rounded-full text-primary font-semibold cursor-pointer"
                     >
                       (Usar)
                     </button>
@@ -482,7 +482,7 @@ export default function DebtFormModal({
                       type="button"
                       onClick={() => setTasaCambio(formatRate(roundUpRate(bcvRate)))}
                       title="Redondear hacia arriba"
-                      className="m3-state h-6 px-2.5 rounded-full bg-secondary-container text-on-secondary-container font-semibold tabular-nums cursor-pointer"
+                      className="m3-state h-9 px-3 rounded-full bg-secondary-container text-on-secondary-container font-semibold tabular-nums cursor-pointer"
                     >
                       ↑ {roundUpRate(bcvRate)}
                     </button>

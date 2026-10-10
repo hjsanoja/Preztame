@@ -154,107 +154,72 @@ export default function DebtDetailsModal({
           </section>
 
           <section>
-            <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
-              <h4 className="text-base font-semibold">Historial de abonos recibidos</h4>
-              {isPending && (
-                <div className="flex flex-wrap gap-2">
-                  {canMarkPaid && (
+            <h4 className="text-base font-semibold mb-2">Abonos recibidos{assocPayments.length ? ` (${assocPayments.length})` : ''}</h4>
+            {assocPayments.length > 0 ? (
+              <ul className="rounded-2xl border border-outline-variant divide-y divide-outline-variant/60">
+                {assocPayments.map(p => (
+                  <li key={p.id} className="flex items-center gap-3 pl-4 pr-1 py-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-success tabular-nums">
+                        +{formatUsd(p.monto)}
+                        {p.moneda === 'VES' && p.montoBs ? <span className="ml-2 text-xs font-normal text-on-surface-variant">{formatVes(p.montoBs)} · tasa {p.tasaCambio}</span> : null}
+                      </p>
+                      <p className="text-xs text-on-surface-variant truncate">
+                        {formatDateLabel(p.fecha)}{p.registradoPor ? ` · recibió ${p.registradoPor}` : ''}{p.nota ? ` · ${p.nota}` : ''}
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => onMarkPaid!(debt.id)}
-                      className="m3-state h-10 px-4 rounded-full bg-secondary-container text-on-secondary-container text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                      onClick={() => onDeletePayment(p.id)}
+                      className="m3-state h-11 w-11 shrink-0 inline-flex items-center justify-center rounded-full text-on-surface-variant hover:text-error cursor-pointer"
+                      title="Anular este abono"
+                      aria-label="Anular este abono"
                     >
-                      <CircleCheck className="h-4 w-4" aria-hidden="true" />
-                      Marcar como pagado
+                      <Trash2 className="h-4 w-4" />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onOpenAbono(debt.id)}
-                    className="m3-state h-10 px-4 rounded-full bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
-                  >
-                    <ArrowDownLeft className="h-4 w-4" aria-hidden="true" />
-                    Abonar capital
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-outline-variant overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead className="border-b border-outline-variant text-xs font-medium text-on-surface-variant">
-                  <tr>
-                    <th className="py-2.5 px-4 font-medium">Fecha pago</th>
-                    <th className="py-2.5 px-4 font-medium">Monto recibido</th>
-                    <th className="py-2.5 px-4 font-medium">Nota / detalle</th>
-                    <th className="py-2.5 px-4 font-medium">Recibió</th>
-                    <th className="py-2.5 px-4 font-medium text-right">Anular</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60 text-on-surface">
-                  {assocPayments.length > 0 ? (
-                    assocPayments.map(p => (
-                      <tr key={p.id}>
-                        <td className="py-2 px-4 tabular-nums text-on-surface-variant whitespace-nowrap">
-                          {formatDateLabel(p.fecha)}
-                        </td>
-                        <td className="py-2 px-4 font-semibold text-success tabular-nums whitespace-nowrap">
-                          +{formatUsd(p.monto)}
-                          {p.moneda === 'VES' && p.montoBs ? (
-                            <span className="block text-xs font-normal text-on-surface-variant">{formatVes(p.montoBs)} · tasa {p.tasaCambio}</span>
-                          ) : null}
-                        </td>
-                        <td className="py-2 px-4 text-on-surface-variant max-w-[150px] truncate" title={p.nota}>
-                          {p.nota || '-'}
-                        </td>
-                        <td className="py-2 px-4 text-on-surface-variant">
-                          {p.registradoPor}
-                        </td>
-                        <td className="py-1 px-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => onDeletePayment(p.id)}
-                            className="m3-state h-10 w-10 inline-flex items-center justify-center rounded-full text-on-surface-variant hover:text-error cursor-pointer"
-                            title="Eliminar este abono de capital"
-                            aria-label="Eliminar este abono de capital"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="py-6 text-center text-sm text-on-surface-variant">
-                        No hay abonos registrados para este préstamo.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-2xl border border-outline-variant py-5 text-center text-sm text-on-surface-variant">Todavía no hay abonos para este préstamo.</p>
+            )}
           </section>
         </div>
 
-        <div className="px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 border-t border-outline-variant flex flex-wrap items-center gap-2 shrink-0">
-          {onEdit && (
-            <button type="button" onClick={() => onEdit(debt.id)} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
-              <Pencil className="h-4 w-4" /> Editar
+        <div className="px-4 sm:px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-4 border-t border-outline-variant flex items-center gap-2 shrink-0">
+          {isPending && (
+            <button
+              type="button"
+              onClick={() => onOpenAbono(debt.id)}
+              className="m3-state h-11 px-5 rounded-full bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <ArrowDownLeft className="h-4 w-4" aria-hidden="true" />
+              Abonar
             </button>
           )}
-          {onOpenPerson && (
-            <button type="button" onClick={() => onOpenPerson(debt.contacto)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
-              <UserRound className="h-4 w-4" /> Ficha de {debt.contacto.split(' ')[0]}
+          {isPending && canMarkPaid && (
+            <button
+              type="button"
+              onClick={() => onMarkPaid!(debt.id)}
+              className="m3-state h-11 px-4 rounded-full bg-secondary-container text-on-secondary-container text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+            >
+              <CircleCheck className="h-4 w-4" aria-hidden="true" />
+              Pagado
             </button>
           )}
           <span className="flex-1" />
-          <button
-            type="button"
-            onClick={onClose}
-            className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold cursor-pointer"
-          >
-            Cerrar
-          </button>
+          {onEdit && (
+            <button type="button" onClick={() => onEdit(debt.id)} title="Editar préstamo" aria-label="Editar préstamo"
+              className="m3-state h-11 w-11 rounded-full text-on-surface-variant inline-flex items-center justify-center cursor-pointer">
+              <Pencil className="h-5 w-5" />
+            </button>
+          )}
+          {onOpenPerson && (
+            <button type="button" onClick={() => onOpenPerson(debt.contacto)} title={`Ficha de ${debt.contacto}`} aria-label={`Ficha de ${debt.contacto}`}
+              className="m3-state h-11 w-11 rounded-full text-on-surface-variant inline-flex items-center justify-center cursor-pointer">
+              <UserRound className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </div>

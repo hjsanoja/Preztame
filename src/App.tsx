@@ -209,7 +209,7 @@ export default function App() {
     url: sheetUrl,
     token: sheetToken,
     onSyncError: (message, code) => {
-      const pending = code === 'network' || code === 'timeout' || code === 'busy' || code === 'http';
+      const pending = code === 'network' || code === 'timeout' || code === 'busy' || code === 'http' || code === 'server';
       showToast(pending ? `${message} Tus cambios quedan guardados y se enviarán al reconectar.` : message, pending ? 'warning' : 'error');
     },
     onOpsRejected: (count, firstError) => {

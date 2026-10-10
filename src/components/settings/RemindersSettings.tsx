@@ -66,7 +66,7 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
   };
 
   return (
-    <div className="m3-card rounded-3xl p-6 space-y-5">
+    <div className="m3-card rounded-3xl p-4 sm:p-6 space-y-5">
       <h4 className="font-semibold text-on-surface text-base flex items-center">
         <BellRing className="h-5 w-5 mr-2 text-primary" />
         Recordatorios de cobro

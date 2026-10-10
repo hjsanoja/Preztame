@@ -142,7 +142,7 @@ describe('Apps Script v9', () => {
   beforeEach(() => { env = makeEnv(); });
 
   it('rejects requests without the right token', () => {
-    expect(JSON.parse(env.context.doGet({ parameter: {} }).text)).toEqual({ ok: false, error: 'unauthorized', keyHint: 'oken' });
+    expect(JSON.parse(env.context.doGet({ parameter: {} }).text)).toMatchObject({ ok: false, error: 'unauthorized', keyHint: 'oken', info: expect.stringContaining('funcionando') });
     expect(JSON.parse(env.context.doGet({ parameter: { token: 'nope' } }).text).error).toBe('unauthorized');
     const res = JSON.parse(env.context.doPost({ postData: { contents: JSON.stringify({ action: 'deleteDebt', id: 'd-1' }) } }).text);
     expect(res.error).toBe('unauthorized');
@@ -402,5 +402,11 @@ describe('Apps Script v9', () => {
     const res = env.get();
     expect(res.apiVersion).toBe(9);
     expect(env.sheets.has('Clientes')).toBe(true);
+  });
+
+  it('answers script errors as JSON instead of an HTML error page', () => {
+    env.get();
+    env.context.getVersion_ = () => { throw new Error('Service Spreadsheets timed out'); };
+    expect(env.get()).toEqual({ ok: false, error: 'server', message: 'Service Spreadsheets timed out' });
   });
 });

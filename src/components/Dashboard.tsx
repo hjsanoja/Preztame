@@ -167,8 +167,6 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
         <StatTile icon={HandCoins} tone="warning" label="Cobrado este mes" value={formatUsd(s.cobradoMes)} sub={formatMonthName(months[months.length - 1])} />
       </div>
 
-      {/* Who has to pay in a month (default: this month) */}
-      <MonthDebtors deudas={viewDeudas} today={today} onOpenPerson={onOpenPerson} onOpenDetails={onOpenDetails} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
 
@@ -320,6 +318,9 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
 
       {/* Upcoming due dates */}
       <UpcomingDueWidget deudas={viewDeudas} onOpenDetails={onOpenDetails} />
+
+      {/* Who has to pay in a month (default: this month) */}
+      <MonthDebtors deudas={viewDeudas} today={today} onOpenPerson={onOpenPerson} onOpenDetails={onOpenDetails} />
 
       {drill && (
         <DrillSheet

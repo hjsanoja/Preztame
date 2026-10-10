@@ -73,8 +73,37 @@ export default function MonthDebtors({ deudas, today, onOpenPerson, onOpenDetail
       </dl>
 
       {rows.length > 0 ? (
-        <div className="overflow-x-auto -mx-4 sm:mx-0">
-          <table className="w-full text-sm tabular-nums min-w-[520px]">
+        <>
+        {/* Phones: one row per person, no sideways scrolling */}
+        <ul className="md:hidden divide-y divide-outline-variant/60 -mx-1">
+          {rows.map(r => {
+            const st = STATUS[r.estado];
+            return (
+              <li key={r.key}>
+                <button type="button"
+                  onClick={() => (onOpenPerson ? onOpenPerson(r.name) : onOpenDetails(r.debtIds[0]))}
+                  className="m3-state w-full flex items-center gap-3 px-1 py-3 rounded-2xl text-left cursor-pointer">
+                  <Avatar name={r.name} size="sm" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold truncate">{r.name}</span>
+                    <span className="block text-xs text-on-surface-variant tabular-nums truncate">
+                      {formatUsd(r.total)}{r.cobrado > 0 && <> · cobrado <span className="text-success">{formatUsd(r.cobrado)}</span></>}
+                      {r.debtIds.length > 1 && <> · {r.debtIds.length} préstamos</>}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-bold tabular-nums">{formatUsd(r.pendiente)}</span>
+                    <span className={`mt-0.5 inline-flex items-center gap-1 h-6 px-2 rounded-lg text-xs font-semibold ${st.cls}`}>
+                      <st.Icon className="h-3.5 w-3.5" aria-hidden="true" /> {st.label}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="hidden md:block">
+          <table className="w-full text-sm tabular-nums">
             <thead>
               <tr className="text-left text-xs text-on-surface-variant">
                 <th className="py-2 px-4 sm:px-2 font-medium">Cliente</th>
@@ -114,6 +143,7 @@ export default function MonthDebtors({ deudas, today, onOpenPerson, onOpenDetail
             </tbody>
           </table>
         </div>
+        </>
       ) : (
         <p className="text-sm text-on-surface-variant py-4 text-center">
           {all.length ? 'Todos pagaron este mes. 🎉' : `Nadie tiene pagos para ${formatMonthName(mes)}.`}

@@ -43,7 +43,16 @@ var CACHE_CHUNK_CHARS = 40000;
 // ============================ ENTRADAS HTTP ============================
 
 function doGet(e) {
-  var p = (e && e.parameter) || {};
+  try {
+    return handleGet_((e && e.parameter) || {});
+  } catch (err) {
+    // Un error dentro del script vuelve como JSON: si no, Google responde una
+    // página HTML y la app solo ve "Failed to fetch".
+    return json_({ ok: false, error: "server", message: String(err && err.message || err) });
+  }
+}
+
+function handleGet_(p) {
   var denied = authError_(p.token);
   if (denied) return json_(denied);
 
@@ -58,6 +67,14 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  try {
+    return handlePost_(e);
+  } catch (err) {
+    return json_({ ok: false, error: "server", message: String(err && err.message || err) });
+  }
+}
+
+function handlePost_(e) {
   var body;
   try {
     body = JSON.parse(e.postData.contents);
@@ -866,7 +883,10 @@ function authError_(token) {
   var key = String(API_TOKEN || "").trim();
   if (!key || key.indexOf("__DEUDAFLOW") === 0) return { ok: false, error: "no-key" };
   if (typeof token === "string" && token.trim() === key) return null;
-  return { ok: false, error: "unauthorized", keyHint: key.slice(-4) };
+  var denied = { ok: false, error: "unauthorized", keyHint: key.slice(-4) };
+  // Abrir la URL /exec en el navegador (sin clave) da esta respuesta: es normal.
+  if (!token) denied.info = "Preztame: el script está funcionando. Esta respuesta es normal al abrir la URL en el navegador; la app se conecta con tu clave de acceso.";
+  return denied;
 }
 
 function json_(obj) {
