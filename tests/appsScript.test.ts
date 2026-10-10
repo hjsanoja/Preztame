@@ -137,7 +137,7 @@ function makeEnv() {
 const debt = { id: 'd-1', cuenta: 'Nina', contacto: 'Juan', tipo: 'favor', descripcion: 'x', fecha: '2026-05-10', mesPago: '2026-06', tasaCambio: 1, monto: 100, saldo: 100, estado: 'pendiente', creadoPor: 'Nina' };
 const payment = { id: 'p-1', fecha: '2026-05-12', deudaId: 'd-1', monto: 30, nota: '', registradoPor: 'Nina' };
 
-describe('Apps Script v8', () => {
+describe('Apps Script v9', () => {
   let env: ReturnType<typeof makeEnv>;
   beforeEach(() => { env = makeEnv(); });
 
@@ -242,12 +242,12 @@ describe('Apps Script v8', () => {
     expect(env.get({ action: 'bcv' })).toMatchObject({ ok: true, rate: 36.5 });
   });
 
-  it('reports apiVersion 8 and the configured users', () => {
+  it('reports apiVersion 9 and the configured users', () => {
     env.batch({ action: 'setUsers', usuarios: ['Nina', 'Nando', 'Ana', 'Nina'] });
     const res = env.get();
-    expect(res.apiVersion).toBe(8);
+    expect(res.apiVersion).toBe(9);
     expect(res.usuarios).toEqual(['Nina', 'Nando', 'Ana']);
-    expect(env.get({ v: res.version })).toMatchObject({ notModified: true, apiVersion: 8 });
+    expect(env.get({ v: res.version })).toMatchObject({ notModified: true, apiVersion: 9 });
   });
 
   it('edits a loan and recomputes the balance from its payments', () => {
@@ -346,5 +346,48 @@ describe('Apps Script v8', () => {
     expect(mail.to).toBe('a@b.co');
     expect(mail.subject).toMatch(/^Preztame: resumen de /);
     expect(env.post({ action: 'disableReminders' })).toMatchObject({ active: false, monthly: false });
+  });
+
+  it('saves a client phone (keeping the leading zero) and clears it', () => {
+    env.batch({ action: 'setClient', nombre: 'Pedro', telefono: '04141234567' });
+    expect(env.get()).toMatchObject({ clientes: ['Pedro'], telefonos: { Pedro: '04141234567' } });
+    env.batch({ action: 'setClient', nombre: 'pedro', telefono: '' });
+    expect(env.get()).toMatchObject({ clientes: ['Pedro'], telefonos: {} });
+  });
+
+  it('renames a client in loans, limits and the client list', () => {
+    env.batch({ action: 'addDebt', debt }, { action: 'setClientLimit', contacto: 'Juan', limite: 200 }, { action: 'setClient', nombre: 'Juan', telefono: '0412' });
+    env.batch({ action: 'renameClient', from: 'juan', to: 'Juan Pérez' });
+    const res = env.get();
+    expect(res.deudas[0].contacto).toBe('Juan Pérez');
+    expect(res.clientLimits).toEqual({ 'Juan Pérez': 200 });
+    expect(res.clientes).toEqual(['Juan Pérez']);
+    expect(res.telefonos).toEqual({ 'Juan Pérez': '0412' });
+  });
+
+  it('unifies two clients: loans and payments move, the target keeps its limit, takes the missing phone', () => {
+    env.batch(
+      { action: 'addDebt', debt },
+      { action: 'addPayment', payment },
+      { action: 'addDebt', debt: { ...debt, id: 'd-2', contacto: 'Juan P' } },
+      { action: 'addDebt', debt: { ...debt, id: 'd-3', contacto: 'Ana' } },
+      { action: 'setClientLimit', contacto: 'Juan', limite: 50 },
+      { action: 'setClientLimit', contacto: 'Juan P', limite: 300 },
+      { action: 'setClient', nombre: 'Juan', telefono: '0414' }
+    );
+    env.batch({ action: 'renameClient', from: 'Juan', to: 'Juan P', desc: 'Unificó a Juan en Juan P' });
+    const res = env.get();
+    expect(res.deudas.map((d: any) => d.contacto).sort()).toEqual(['Ana', 'Juan P', 'Juan P']);
+    expect(res.pagos[0].deudaId).toBe('d-1');
+    expect(res.clientLimits).toEqual({ 'Juan P': 300 });
+    expect(res.clientes.sort()).toEqual(['Ana', 'Juan P']);
+    expect(res.telefonos).toEqual({ 'Juan P': '0414' });
+    expect(env.get({ action: 'log' }).log[0]).toMatchObject({ accion: 'renameClient', detalle: 'Unificó a Juan en Juan P' });
+  });
+
+  it('deletes a client from the list and its limit', () => {
+    env.batch({ action: 'setClient', nombre: 'Zoe', telefono: '' }, { action: 'setClientLimit', contacto: 'Zoe', limite: 10 });
+    env.batch({ action: 'deleteClient', nombre: 'zoe' });
+    expect(env.get()).toMatchObject({ clientes: [], clientLimits: {} });
   });
 });

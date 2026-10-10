@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
-import { AlarmClock, CalendarClock, CalendarDays, CheckCircle2, CircleAlert, CircleHelp } from 'lucide-react';
+import { createContext, useContext, type ReactNode } from 'react';
+import { AlarmClock, CalendarClock, CalendarDays, Check, CheckCircle2, CircleAlert, CircleHelp } from 'lucide-react';
 import { DueStatus } from '../lib/dueStatus';
 import { initials } from '../lib/format';
 import { tagColorVar, tagLabel } from '../lib/tags';
@@ -115,5 +115,24 @@ export function PunctualityChip({ value, label }: { value: keyof typeof PUNCTUAL
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {label}
     </span>
+  );
+}
+
+// M3 filter chip (selected = tonal with a check mark).
+export function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`m3-state h-8 px-3 rounded-lg text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
+        selected
+          ? 'bg-secondary-container text-on-secondary-container border-transparent'
+          : 'border-outline-variant text-on-surface-variant'
+      }`}
+    >
+      {selected && <Check className="h-4 w-4" aria-hidden="true" />}
+      {children}
+    </button>
   );
 }

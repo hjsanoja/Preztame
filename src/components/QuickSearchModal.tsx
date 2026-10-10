@@ -1,9 +1,9 @@
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { AccountChip, accountTone, useAccounts } from './ui';
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatMonthName } from '../utils/storage';
-import { Search, X, ClipboardList, DollarSign, User, TrendingUp, ChevronRight, Clock, CheckCircle2, ArrowRightLeft } from 'lucide-react';
+import { Search, X, ClipboardList, Plus, TrendingUp, Clock, CheckCircle2, ArrowRightLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface QuickSearchModalProps {
@@ -62,10 +62,12 @@ export default function QuickSearchModal({
 
   if (!isOpen) return null;
 
+  const chip = 'm3-state h-8 px-3 rounded-lg border border-outline-variant text-on-surface-variant text-sm font-medium inline-flex items-center gap-2 cursor-pointer';
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 pt-[calc(4rem+env(safe-area-inset-top))] sm:pt-4 bg-scrim/40" onClick={onClose}>
-        <motion.div 
+        <motion.div
           ref={dialogRef}
           role="dialog"
           aria-modal="true"
@@ -76,132 +78,134 @@ export default function QuickSearchModal({
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
           className="bg-surface-high text-on-surface rounded-[28px] m3-elevation-3 w-full max-w-xl overflow-hidden flex flex-col max-h-[80dvh]"
         >
-          {/* Search Input Bar */}
-          <div className="p-4 border-b border-outline-variant flex items-center space-x-3 bg-surface-low/80">
-            <Search className="h-5 w-5 text-primary shrink-0" />
-            <input 
-              type="search" 
+          {/* Search bar */}
+          <div className="h-16 pl-5 pr-2 border-b border-outline-variant flex items-center gap-3 shrink-0">
+            <Search className="h-5 w-5 text-on-surface-variant shrink-0" aria-hidden="true" />
+            <input
+              type="search"
               autoFocus
               aria-label="Buscar"
               placeholder="Buscar cliente o concepto"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full bg-transparent text-sm sm:text-base font-medium text-on-surface focus:outline-none placeholder:text-outline"
+              className="flex-1 min-w-0 bg-transparent text-base text-on-surface focus:outline-none placeholder:text-on-surface-variant"
             />
             {query && (
-              <button 
+              <button
+                type="button"
                 onClick={() => setQuery('')}
-                className="p-1 hover:bg-surface-high rounded-full text-outline hover:text-on-surface"
+                aria-label="Borrar búsqueda"
+                className="m3-state h-10 w-10 rounded-full flex items-center justify-center text-on-surface-variant cursor-pointer shrink-0"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             )}
-            <button 
+            <button
+              type="button"
               onClick={onClose}
               aria-label="Cerrar búsqueda"
-              className="m3-state h-10 px-3 rounded-full text-on-surface-variant cursor-pointer text-xs font-bold"
+              className="m3-state h-10 px-3 rounded-full text-on-surface-variant text-sm font-semibold cursor-pointer shrink-0"
             >
               Esc
             </button>
           </div>
 
-          {/* Quick Actions Bar */}
-          <div className="p-3 border-b border-outline-variant bg-surface-container/50 flex flex-wrap gap-2 text-xs">
+          {/* Quick actions */}
+          <div className="px-4 py-3 border-b border-outline-variant flex flex-wrap gap-2 shrink-0">
             <button
+              type="button"
               onClick={() => { onClose(); onOpenNewDebt(); }}
-              className="px-3 py-1.5 bg-primary hover:bg-primary text-on-primary font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer shadow-2xs"
+              className="m3-state h-8 px-3 rounded-lg bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
             >
-              <ClipboardList className="h-3.5 w-3.5" />
-              <span>+ Nuevo Préstamo</span>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Nuevo préstamo
             </button>
-            <button
-              onClick={() => { onClose(); onNavigateTab?.('resumen'); }}
-              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
-            >
-              <TrendingUp className="h-3.5 w-3.5 text-primary" />
-              <span>Resumen</span>
+            <button type="button" onClick={() => { onClose(); onNavigateTab?.('resumen'); }} className={chip}>
+              <TrendingUp className="h-4 w-4 text-primary" aria-hidden="true" />
+              Resumen
             </button>
-            <button
-              onClick={() => { onClose(); onNavigateTab?.('deudas'); }}
-              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
-            >
-              <DollarSign className="h-3.5 w-3.5 text-success" />
-              <span>Ver Préstamos</span>
+            <button type="button" onClick={() => { onClose(); onNavigateTab?.('deudas'); }} className={chip}>
+              <ClipboardList className="h-4 w-4 text-primary" aria-hidden="true" />
+              Ver préstamos
             </button>
-            <button
-              onClick={() => { onClose(); onNavigateTab?.('movimientos'); }}
-              className="px-3 py-1.5 bg-surface-lowest hover:bg-surface-high text-on-surface border border-outline-variant font-bold rounded-full flex items-center space-x-1.5 transition cursor-pointer"
-            >
-              <ArrowRightLeft className="h-3.5 w-3.5 text-tertiary" />
-              <span>Historial Abonos</span>
+            <button type="button" onClick={() => { onClose(); onNavigateTab?.('movimientos'); }} className={chip}>
+              <ArrowRightLeft className="h-4 w-4 text-primary" aria-hidden="true" />
+              Historial de abonos
             </button>
           </div>
 
-          {/* Search Results List */}
-          <div className="max-h-[60vh] overflow-y-auto p-3 space-y-2">
-            <div className="text-[11px] font-bold text-outline uppercase tracking-wider px-2 pt-1">
-              {query ? `Resultados Coincidentes (${matchingDebts.length})` : 'Préstamos Recientes'}
-            </div>
+          {/* Results */}
+          <div className="max-h-[60vh] overflow-y-auto py-2">
+            <h3 className="px-5 pt-1 pb-2 text-sm font-semibold text-on-surface-variant">
+              {query ? `Resultados coincidentes (${matchingDebts.length})` : 'Préstamos recientes'}
+            </h3>
 
             {matchingDebts.length > 0 ? (
-              matchingDebts.map(debt => (
-                <div
-                  key={debt.id}
-                  onClick={() => {
-                    onClose();
-                    onOpenDetails(debt.id);
-                  }}
-                  className="p-3 hover:bg-surface-low border border-outline-variant/60 rounded-2xl flex items-center justify-between transition cursor-pointer group"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className={`p-2.5 rounded-xl shrink-0 ${debt.estado === 'pendiente' ? 'bg-error-container text-error' : 'bg-success-container text-success'}`}>
-                      {debt.estado === 'pendiente' ? <Clock className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-on-surface group-hover:text-primary transition">
-                          {debt.contacto}
+              <ul>
+                {matchingDebts.map(debt => {
+                  const pending = debt.estado === 'pendiente';
+                  return (
+                    <li key={debt.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenDetails(debt.id);
+                        }}
+                        className="m3-state w-full px-5 py-3 flex items-center gap-3 text-left cursor-pointer"
+                      >
+                        <span
+                          className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${pending ? 'bg-surface-container text-on-surface-variant' : 'bg-success-container text-on-success-container'}`}
+                          aria-hidden="true"
+                        >
+                          {pending ? <Clock className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
                         </span>
-                        <AccountChip cuenta={debt.cuenta} />
-                      </div>
-                      <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">
-                        {debt.descripcion || 'Sin nota'} • Vence: {formatMonthName(debt.mesPago)}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0 ml-3">
-                    <span className="font-bold text-sm text-on-surface tabular-nums block">
-                      {formatValue(debt.monto)}
-                    </span>
-                    <span className={`text-[11px] font-bold block ${debt.saldo > 0 ? 'text-error' : 'text-success'}`}>
-                      {debt.saldo > 0 ? `Saldo: ${formatValue(debt.saldo)}` : 'Saldado ✓'}
-                    </span>
-                  </div>
-                </div>
-              ))
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-semibold text-on-surface truncate">{debt.contacto}</span>
+                            <AccountChip cuenta={debt.cuenta} />
+                          </span>
+                          <span className="block text-xs text-on-surface-variant line-clamp-1 mt-0.5">
+                            {debt.descripcion || 'Sin nota'} · Vence: {formatMonthName(debt.mesPago)}
+                          </span>
+                        </span>
+                        <span className="text-right shrink-0">
+                          <span className="block text-sm font-bold text-on-surface tabular-nums">
+                            {formatValue(debt.monto)}
+                          </span>
+                          <span className={`block text-xs font-semibold tabular-nums ${debt.saldo > 0 ? 'text-error' : 'text-success'}`}>
+                            {debt.saldo > 0 ? `Saldo: ${formatValue(debt.saldo)}` : 'Saldado'}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             ) : (
-              <div className="py-8 text-center text-outline text-xs font-medium">
+              <p className="px-5 py-8 text-center text-sm text-on-surface-variant">
                 No se encontraron coincidencias para "{query}".
-              </div>
+              </p>
             )}
           </div>
 
-          {/* Quick Account Switcher Footer */}
-          <div className="p-3 border-t border-outline-variant bg-surface-low flex items-center justify-between text-xs text-on-surface-variant">
-            <span className="font-medium">Filtrar vista global por:</span>
-            <div className="flex items-center space-x-1 font-bold">
-              <button 
+          {/* Account filter */}
+          <div className="px-4 py-3 border-t border-outline-variant flex flex-wrap items-center justify-between gap-2 shrink-0">
+            <span className="text-xs text-on-surface-variant">Filtrar vista global por:</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
                 onClick={() => { onToggleAccountView?.('Ambos'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-surface-lowest border border-outline-variant hover:bg-surface-container text-on-surface cursor-pointer"
+                className="m3-state h-8 px-3 rounded-lg border border-outline-variant text-on-surface-variant text-sm font-medium cursor-pointer"
               >
                 Ambos
               </button>
               {accounts.map(name => (
                 <button
                   key={name}
+                  type="button"
                   onClick={() => { onToggleAccountView?.(name); onClose(); }}
-                  className={`px-2.5 py-1 rounded-full cursor-pointer ${accountTone(name, accounts).container}`}
+                  className={`m3-state h-8 px-3 rounded-lg text-sm font-semibold cursor-pointer ${accountTone(name, accounts).container}`}
                 >
                   {name}
                 </button>

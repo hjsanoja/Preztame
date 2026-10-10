@@ -10,8 +10,8 @@ import { useLedger } from './hooks/useLedger';
 import { usePwa } from './hooks/usePwa';
 import InstallBanner from './components/InstallBanner';
 import { parseAutoConfigLink } from './lib/autoConfig';
-import { accountsOf, clientsOf, DebtChanges, LedgerOp, newId } from './lib/ledger';
-import { formatUsd, formatVes } from './lib/format';
+import { accountsOf, clientsOf, DebtChanges, LedgerOp, limitOf, minApiFor, newId, phoneOf, sameName } from './lib/ledger';
+import { formatUsd, formatVes, localDay } from './lib/format';
 import { personKey, summarizePeople } from './lib/people';
 import { formatMonthName } from './utils/storage';
 import { tagLabel } from './lib/tags';
@@ -44,10 +44,12 @@ import { useFocusTrap } from './hooks/useFocusTrap';
 import { useDueNotifications } from './hooks/useDueNotifications';
 import { AccountsProvider, accountTone } from './components/ui';
 import PersonSheet from './components/PersonSheet';
-import UsersSettings from './components/UsersSettings';
-import RemindersSettings from './components/RemindersSettings';
-import BackupSettings from './components/BackupSettings';
-import SecuritySettings from './components/SecuritySettings';
+import UsersSettings from './components/settings/UsersSettings';
+import RemindersSettings from './components/settings/RemindersSettings';
+import BackupSettings from './components/settings/BackupSettings';
+import SecuritySettings from './components/settings/SecuritySettings';
+import ClientsSettings, { ClientEdit } from './components/settings/ClientsSettings';
+import DataExportCard from './components/settings/DataExportCard';
 import LockScreen from './components/LockScreen';
 import { useAppLock } from './hooks/useAppLock';
 
@@ -55,11 +57,11 @@ import { useAppLock } from './hooks/useAppLock';
 const loadDashboard = () => import('./components/Dashboard');
 const loadDebtsList = () => import('./components/DebtsList');
 const loadHistory = () => import('./components/TransactionsHistory');
-const loadSetupGuide = () => import('./components/SetupGuide');
+const loadSettings = () => import('./components/settings/SettingsScreen');
 const Dashboard = lazy(loadDashboard);
 const DebtsList = lazy(loadDebtsList);
 const TransactionsHistory = lazy(loadHistory);
-const SetupGuide = lazy(loadSetupGuide);
+const SettingsScreen = lazy(loadSettings);
 const loadPeople = () => import('./components/PeopleList');
 const PeopleList = lazy(loadPeople);
 const ChangeLogView = lazy(() => import('./components/ChangeLogView'));
@@ -69,6 +71,7 @@ interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info' | 'warning';
+  action?: { label: string; onClick: () => void };
 }
 
 interface ConfirmConfig {
@@ -178,13 +181,14 @@ export default function App() {
   });
 
   // Display toast alerts
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', action?: Toast['action']) => {
     const id = Date.now().toString() + Math.random().toString();
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message, type, action }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, type === 'error' || type === 'warning' ? 5000 : 3000);
+    }, action ? 7000 : type === 'error' || type === 'warning' ? 5000 : 3000);
   }, []);
+  const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
   // Display confirmation modal
   const askConfirmation = useCallback((title: string, message: string, onConfirm: () => void) => {
@@ -226,7 +230,7 @@ export default function App() {
   // description for the change log.
   const act = (op: LedgerOp, desc: string): boolean => {
     const ok = ledger.dispatch(op, { by: currentUser, desc });
-    if (!ok) showToast('Esta función necesita el Apps Script v7. Cópialo desde Ajustes y publica una nueva versión.', 'warning');
+    if (!ok) showToast('Esta función necesita actualizar el Apps Script. Cópialo desde Ajustes y publica una nueva versión.', 'warning');
     return ok;
   };
   const syncStatus = ledger.status;
@@ -249,7 +253,7 @@ export default function App() {
 
   // Warm up the other tabs once the browser is idle.
   useEffect(() => {
-    const prefetch = () => { loadDashboard(); loadDebtsList(); loadHistory(); loadSetupGuide(); loadPeople(); };
+    const prefetch = () => { loadDashboard(); loadDebtsList(); loadHistory(); loadSettings(); loadPeople(); };
     const w = window as any;
     if (typeof w.requestIdleCallback === 'function') {
       const id = w.requestIdleCallback(prefetch, { timeout: 4000 });
@@ -376,16 +380,6 @@ export default function App() {
     showToast(local ? "Prueba sin conexión local activada." : "Entrando a modo sincronización permanente Sheets.", "info");
   };
 
-  // Set client credit limits
-  const handleSetClientLimit = (contacto: string, limit: number) => {
-    act({ action: 'setClientLimit', contacto, limite: limit }, limit > 0 ? `Límite de crédito de ${contacto}: ${formatUsd(limit)}` : `Quitó el límite de crédito de ${contacto}`);
-    if (limit <= 0) {
-      showToast(`Límite de crédito removido para ${contacto}.`, "success");
-    } else {
-      showToast(`Límite de crédito de $${limit} asignado para ${contacto}.`, "success");
-    }
-  };
-
   // Restore imported backup data (local mode only: Sheets is the source of truth)
   const handleImportBackup = (importedDeudas: Debt[], importedPagos: Payment[], importedLimits: Record<string, number>) => {
     const ok = ledger.replaceLocalData(normalizeLedger({ deudas: importedDeudas, pagos: importedPagos, clientLimits: importedLimits, usuarios: ledger.data.usuarios }));
@@ -504,6 +498,49 @@ export default function App() {
     }
   };
 
+  // 7. PAID IN FULL (one tap, with undo)
+  const handleMarkPaid = (id: string) => {
+    const target = deudas.find(d => d.id === id);
+    if (!target || target.estado !== 'pendiente' || target.saldo <= 0) return;
+    const payment: Payment = {
+      id: newId('p'),
+      fecha: localDay(),
+      deudaId: id,
+      monto: target.saldo,
+      nota: 'Pago completo',
+      registradoPor: currentUser
+    };
+    if (!act({ action: 'addPayment', payment }, `Marcó como pagado el préstamo de ${target.contacto} (${formatUsd(target.saldo)})`)) return;
+    showToast(`${target.contacto}: préstamo pagado (${formatUsd(target.saldo)}).`, 'success', {
+      label: 'Deshacer',
+      onClick: () => act({ action: 'deletePayment', id: payment.id }, `Deshizo el pago completo de ${target.contacto}`)
+    });
+  };
+
+  // 8. CLIENTS
+  const clientes = clientsOf(ledger.data);
+  const clientPhone = (name: string) => phoneOf(ledger.data, name);
+  const handleSaveClient = (original: string, edit: ClientEdit) => {
+    const renamed = edit.nombre !== original;
+    if (renamed && !act({ action: 'renameClient', from: original, to: edit.nombre }, `Renombró al cliente ${original} como ${edit.nombre}`)) return;
+    if (edit.telefono !== clientPhone(original)) {
+      if (!act({ action: 'setClient', nombre: edit.nombre, telefono: edit.telefono }, edit.telefono ? `Teléfono de ${edit.nombre}: ${edit.telefono}` : `Quitó el teléfono de ${edit.nombre}`)) return;
+    }
+    if (edit.limite !== limitOf(ledger.data, original)) {
+      act({ action: 'setClientLimit', contacto: edit.nombre, limite: edit.limite }, edit.limite > 0 ? `Límite de crédito de ${edit.nombre}: ${formatUsd(edit.limite)}` : `Quitó el límite de crédito de ${edit.nombre}`);
+    }
+    showToast(renamed ? `${original} ahora se llama ${edit.nombre}.` : `Cliente ${edit.nombre} guardado.`, 'success');
+  };
+  const handleMergeClient = (from: string, to: string) => {
+    const loans = deudas.filter(d => sameName(d.contacto, from)).length;
+    if (act({ action: 'renameClient', from, to }, `Unificó al cliente ${from} en ${to} (${loans} préstamo${loans === 1 ? '' : 's'})`)) {
+      showToast(`${from} quedó unificado en ${to}.`, 'success');
+    }
+  };
+  const handleDeleteClient = (name: string) => {
+    if (act({ action: 'deleteClient', nombre: name }, `Quitó al cliente ${name}`)) showToast(`${name} ya no está en la lista de clientes.`, 'info');
+  };
+
   const handleOpenPersonByName = (name: string) => {
     setSelectedDetailsId(null);
     setOpenPersonKey(personKey(name));
@@ -554,6 +591,12 @@ export default function App() {
         pinLength={appLock.settings.pinLength}
         onPin={appLock.unlockWithPin}
         onBiometric={appLock.unlockWithBiometric}
+        onRecover={!isLocalMode && sheetToken ? (key) => {
+          if (key !== sheetToken.trim()) return false;
+          appLock.disable();
+          showToast('Bloqueo quitado. Crea un PIN nuevo en Ajustes → Seguridad.', 'info');
+          return true;
+        } : undefined}
       />
     )}
     <div className="bg-surface text-on-surface min-h-dvh font-sans antialiased selection:bg-primary/20 md:pl-24">
@@ -718,6 +761,8 @@ export default function App() {
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
               onDeleteDebt={handleDeleteDebt}
               onEditDebt={(id) => setEditingDebtId(id)}
+              onMarkPaid={handleMarkPaid}
+              phoneOf={clientPhone}
               onNotify={(m) => showToast(m, 'success')}
             />
           )}
@@ -752,6 +797,7 @@ export default function App() {
                   accountView={currentView}
                   onDeleteDebt={handleDeleteDebt}
                   onDeletePayment={handleDeletePayment}
+                  onOpenDebt={(id) => setSelectedDetailsId(id)}
                 />
               ) : (
                 <ChangeLogView
@@ -768,38 +814,13 @@ export default function App() {
 
           </>}
           {currentTab === 'config' && (
-            <SetupGuide 
+            <SettingsScreen
               key={`${sheetUrl}|${sheetToken}`}
               sheetUrl={sheetUrl}
               sheetToken={sheetToken}
-              onSaveConnection={handleSaveConnection}
-              onApplyAutoConfigLink={handleApplyAutoConfigLink}
               apiVersion={ledger.apiVersion}
-              extraCards={<>
-                <SecuritySettings
-                  settings={appLock.settings}
-                  userName={currentUser}
-                  setPin={appLock.setPin}
-                  disable={appLock.disable}
-                  enableBiometric={appLock.enableBiometric}
-                  disableBiometric={appLock.disableBiometric}
-                  setTimeoutMin={appLock.setTimeoutMin}
-                  lockNow={appLock.lockNow}
-                  onNotify={showToast}
-                />
-                <UsersSettings accounts={accounts} deudas={deudas} activeUser={currentUser} onSetUsers={handleSetUsers} onRenameUser={handleRenameUser} />
-                <RemindersSettings
-                  mode={isLocalMode ? 'local' : 'sheets'}
-                  url={sheetUrl}
-                  token={sheetToken}
-                  apiVersion={ledger.apiVersion}
-                  isIos={pwa.isIos}
-                  isStandalone={pwa.isStandalone}
-                  notify={notifications}
-                  onNotify={showToast}
-                />
-                <BackupSettings mode={isLocalMode ? 'local' : 'sheets'} url={sheetUrl} token={sheetToken} apiVersion={ledger.apiVersion} onNotify={showToast} />
-              </>}
+              isLocalMode={isLocalMode}
+              activeUser={currentUser}
               themePreference={theme.preference}
               onThemeChange={theme.setPreference}
               pwa={{
@@ -808,15 +829,53 @@ export default function App() {
                 canInstall: pwa.canInstall,
                 onInstall: () => { void pwa.promptInstall(); }
               }}
+              onSaveConnection={handleSaveConnection}
+              onApplyAutoConfigLink={handleApplyAutoConfigLink}
               onClearSettings={handleClearUrlSettings}
-              isLocalMode={isLocalMode}
               onToggleLocal={handleToggleLocalMode}
-              activeUser={currentUser}
-              deudas={deudas}
-              pagos={pagos}
-              clientLimits={clientLimits}
-              onSetClientLimit={handleSetClientLimit}
-              onImportBackup={handleImportBackup}
+              cards={{
+                clients: (
+                  <ClientsSettings
+                    clients={clientes}
+                    deudas={deudas}
+                    pagos={pagos}
+                    phoneOf={clientPhone}
+                    limitOf={(name) => limitOf(ledger.data, name)}
+                    canEdit={isLocalMode || ledger.apiVersion === null || ledger.apiVersion >= minApiFor('renameClient')}
+                    onSave={handleSaveClient}
+                    onMerge={handleMergeClient}
+                    onDelete={handleDeleteClient}
+                  />
+                ),
+                security: (
+                  <SecuritySettings
+                    settings={appLock.settings}
+                    userName={currentUser}
+                    setPin={appLock.setPin}
+                    disable={appLock.disable}
+                    enableBiometric={appLock.enableBiometric}
+                    disableBiometric={appLock.disableBiometric}
+                    setTimeoutMin={appLock.setTimeoutMin}
+                    lockNow={appLock.lockNow}
+                    onNotify={showToast}
+                  />
+                ),
+                users: <UsersSettings accounts={accounts} deudas={deudas} activeUser={currentUser} onSetUsers={handleSetUsers} onRenameUser={handleRenameUser} />,
+                reminders: (
+                  <RemindersSettings
+                    mode={isLocalMode ? 'local' : 'sheets'}
+                    url={sheetUrl}
+                    token={sheetToken}
+                    apiVersion={ledger.apiVersion}
+                    isIos={pwa.isIos}
+                    isStandalone={pwa.isStandalone}
+                    notify={notifications}
+                    onNotify={showToast}
+                  />
+                ),
+                backup: <BackupSettings mode={isLocalMode ? 'local' : 'sheets'} url={sheetUrl} token={sheetToken} apiVersion={ledger.apiVersion} onNotify={showToast} />,
+                data: <DataExportCard deudas={deudas} pagos={pagos} clientLimits={clientLimits} onImportBackup={handleImportBackup} onNotify={showToast} />
+              }}
             />
           )}
           </Suspense>
@@ -839,6 +898,7 @@ export default function App() {
         activeUser={currentUser}
         onEdit={(id) => { setEditingDebtId(id); }}
         onOpenPerson={handleOpenPersonByName}
+        onMarkPaid={handleMarkPaid}
       />
 
       {/* Form modal to register new debt */}
@@ -860,6 +920,7 @@ export default function App() {
         <PersonSheet
           person={openPerson}
           limit={Object.entries(clientLimits).find(([k]) => personKey(k) === openPerson.key)?.[1] ?? 0}
+          phone={clientPhone(openPerson.name)}
           onClose={() => setOpenPersonKey(null)}
           onOpenDebt={(id) => setSelectedDetailsId(id)}
           onNewDebt={(name) => { setNewDebtContact(name); setIsDebtFormOpen(true); }}
@@ -928,7 +989,13 @@ export default function App() {
               className="pointer-events-auto flex items-start gap-3 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-3 m3-elevation-3 text-sm leading-snug animate-sheet-in"
             >
               <Icon className={`h-5 w-5 shrink-0 mt-px ${t.type === 'error' || t.type === 'warning' ? 'text-warning-container' : 'text-inverse-primary'}`} aria-hidden="true" />
-              <span>{t.message}</span>
+              <span className="flex-1">{t.message}</span>
+              {t.action && (
+                <button type="button" onClick={() => { t.action!.onClick(); dismissToast(t.id); }}
+                  className="m3-state -my-2 -mr-2 h-10 px-3 rounded-full text-sm font-semibold text-inverse-primary shrink-0 cursor-pointer">
+                  {t.action.label}
+                </button>
+              )}
             </div>
           );
         })}

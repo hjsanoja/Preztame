@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountsOf, applyOp, applyOps, clientsOf, LedgerData } from '../src/lib/ledger';
+import { accountsOf, applyOp, applyOps, clientsOf, LedgerData, limitOf, phoneOf } from '../src/lib/ledger';
 import { Debt, Payment } from '../src/types';
 
 const debt = (over: Partial<Debt> = {}): Debt => ({
@@ -9,7 +9,7 @@ const debt = (over: Partial<Debt> = {}): Debt => ({
 const pay = (over: Partial<Payment> = {}): Payment => ({
   id: 'p-1', fecha: '2026-05-12', deudaId: 'd-1', monto: 30, nota: '', registradoPor: 'Nina', ...over
 });
-const base: LedgerData = { deudas: [debt()], pagos: [], clientLimits: {}, usuarios: [], clientes: [] };
+const base: LedgerData = { deudas: [debt()], pagos: [], clientLimits: {}, usuarios: [], clientes: [], telefonos: {} };
 
 describe('applyOp', () => {
   it('adds a payment and reduces the balance', () => {
@@ -90,5 +90,27 @@ describe('applyOp', () => {
     expect(two.clientes).toEqual(['Juan', 'Ana']);
     expect(applyOp(two, { action: 'updateDebt', id: 'd-3', changes: { contacto: 'Beto' } }).clientes).toEqual(['Juan', 'Ana', 'Beto']);
     expect(clientsOf({ ...base, clientes: ['zoe'] })).toEqual(['Juan', 'zoe']);
+  });
+
+  it('saves, renames and unifies clients with their loans, limits and phones', () => {
+    let data = applyOps(base, [
+      { action: 'addDebt', debt: debt({ id: 'd-2', contacto: 'Juan P' }) },
+      { action: 'setClientLimit', contacto: 'Juan', limite: 50 },
+      { action: 'setClientLimit', contacto: 'Juan P', limite: 300 },
+      { action: 'setClient', nombre: 'juan', telefono: '0414' }
+    ]);
+    expect(phoneOf(data, 'JUAN')).toBe('0414');
+    data = applyOp(data, { action: 'renameClient', from: 'Juan', to: 'Juan P' });
+    expect(data.deudas.map(d => d.contacto)).toEqual(['Juan P', 'Juan P']);
+    expect(data.clientes).toEqual(['Juan P']);
+    expect(data.clientLimits).toEqual({ 'Juan P': 300 });
+    expect(limitOf(data, 'juan p')).toBe(300);
+    expect(phoneOf(data, 'Juan P')).toBe('0414');
+    data = applyOp(data, { action: 'renameClient', from: 'juan p', to: 'Juan Pérez' });
+    expect(clientsOf(data)).toEqual(['Juan Pérez']);
+    expect(data.telefonos).toEqual({ 'Juan Pérez': '0414' });
+    data = applyOp(data, { action: 'deleteClient', nombre: 'juan pérez' });
+    expect(data.clientes).toEqual([]);
+    expect(data.clientLimits).toEqual({});
   });
 });

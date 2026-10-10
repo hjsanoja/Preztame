@@ -1,5 +1,5 @@
 /* ====================================================================
- * PREZTAME · GOOGLE APPS SCRIPT v8
+ * PREZTAME · GOOGLE APPS SCRIPT v9
  * ====================================================================
  * 1. Abre tu Google Sheet > Extensiones > Apps Script.
  * 2. Borra todo el código del editor y pega este archivo completo.
@@ -17,6 +17,7 @@
  * historial de cambios (hoja "Historial") y recordatorios por correo.
  * v8: lista de clientes (hoja "Clientes"), respaldo automático en Drive y
  * resumen mensual por correo.
+ * v9: teléfono de cada cliente, renombrar, unificar y borrar clientes.
  *
  * La clave de abajo la genera Preztame. Sin ella nadie puede leer ni
  * modificar tus datos aunque conozca la URL.
@@ -33,8 +34,8 @@ var SCHEMA = {
   Historial: ["fecha", "usuario", "accion", "refId", "detalle"]
 };
 
-var API_VERSION = 8;
-var SCHEMA_FLAG = "df_schema_v8";
+var API_VERSION = 9;
+var SCHEMA_FLAG = "df_schema_v9";
 var VERSION_KEY = "df_version";
 var CACHE_TTL_SECONDS = 1800;
 var CACHE_CHUNK_CHARS = 40000;
@@ -121,6 +122,9 @@ function applyOp_(ss, op) {
     case "updateDebt": return updateDebt_(ss, op.id, op.changes || {});
     case "setUsers": return setUsers_(ss, op.usuarios || []);
     case "renameUser": return renameUser_(ss, op.from, op.to);
+    case "setClient": return setClient_(ss, op.nombre, op.telefono);
+    case "renameClient": return renameClient_(ss, op.from, op.to);
+    case "deleteClient": return deleteClient_(ss, op.nombre);
     default: throw new Error("Acción desconocida: " + op.action);
   }
 }
@@ -314,11 +318,98 @@ function renameUser_(ss, from, to) {
   return count > 0;
 }
 
+// ============================ CLIENTES ============================
+
+var sameName_ = function (a, b) { return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase(); };
+
+// Rows (1-based) of a sheet whose column matches a name, any casing.
+function nameRows_(sheet, header, name) {
+  var last = sheet.getLastRow();
+  var col = headerMap_(sheet)[header];
+  if (last < 2 || col === undefined) return [];
+  var rows = [];
+  sheet.getRange(2, col + 1, last - 1, 1).getValues().forEach(function (r, i) {
+    if (sameName_(r[0], name)) rows.push(i + 2);
+  });
+  return rows;
+}
+
+function deleteRowsDesc_(sheet, rows) {
+  rows.slice().sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); });
+}
+
+// Adds the client if missing and saves its phone ("" clears it).
+function setClient_(ss, nombre, telefono) {
+  nombre = String(nombre || "").trim();
+  if (!nombre) throw new Error("Cliente sin nombre");
+  var sheet = getSheet_(ss, "Clientes");
+  var tel = String(telefono || "").trim();
+  var rows = nameRows_(sheet, "nombre", nombre);
+  if (!rows.length) {
+    // Prefijo ' para que Sheets no quite el 0 inicial ni lo trate como número.
+    appendObject_(sheet, { nombre: nombre, telefono: tel ? "'" + tel : "", creado: new Date() });
+    return true;
+  }
+  if (String(getCell_(sheet, rows[0], "telefono")) === tel) return false;
+  setCells_(sheet, rows[0], { telefono: tel ? "'" + tel : "" });
+  return true;
+}
+
+// Renames a client everywhere. If the new name already exists, both are
+// unified: every loan (and with it its payments) moves to the new name, the
+// credit limit and phone of the new name are kept (or taken from the old one
+// when it has none) and the old name leaves the client list.
+function renameClient_(ss, from, to) {
+  from = String(from || "").trim();
+  to = String(to || "").trim();
+  if (!from || !to || from === to) return false;
+  var changed = false;
+
+  var deudas = getSheet_(ss, "Deudas");
+  var col = headerMap_(deudas).contacto;
+  var last = deudas.getLastRow();
+  if (last > 1 && col !== undefined) {
+    var range = deudas.getRange(2, col + 1, last - 1, 1);
+    var values = range.getValues();
+    var hits = 0;
+    values.forEach(function (r) { if (sameName_(r[0], from)) { r[0] = to; hits++; } });
+    if (hits) { range.setValues(values); changed = true; }
+  }
+
+  var caseOnly = sameName_(from, to);
+  [["Limites", "contacto", "limite"], ["Clientes", "nombre", "telefono"]].forEach(function (t) {
+    var sheet = getSheet_(ss, t[0]);
+    var src = nameRows_(sheet, t[1], from);
+    if (!src.length) return;
+    var dst = caseOnly ? [] : nameRows_(sheet, t[1], to);
+    var keep = dst.length ? dst[0] : src[0];
+    var extra = String(getCell_(sheet, keep, t[2]) || "") === "" ? getCell_(sheet, src[0], t[2]) : "";
+    var values = {};
+    values[t[1]] = to;
+    if (extra !== "" && extra !== null) values[t[2]] = t[2] === "telefono" ? "'" + extra : extra;
+    setCells_(sheet, keep, values);
+    deleteRowsDesc_(sheet, src.filter(function (r) { return r !== keep; }));
+    changed = true;
+  });
+  return changed;
+}
+
+// Removes a client from the list (and its credit limit). Its loans stay.
+function deleteClient_(ss, nombre) {
+  var changed = false;
+  [["Clientes", "nombre"], ["Limites", "contacto"]].forEach(function (t) {
+    var sheet = getSheet_(ss, t[0]);
+    var rows = nameRows_(sheet, t[1], nombre);
+    if (rows.length) { deleteRowsDesc_(sheet, rows); changed = true; }
+  });
+  return changed;
+}
+
 // ============================ HISTORIAL DE CAMBIOS ============================
 
 function logOp_(ss, op) {
   try {
-    var refId = op.id || (op.debt && op.debt.id) || (op.payment && op.payment.id) || op.contacto || op.from || "";
+    var refId = op.id || (op.debt && op.debt.id) || (op.payment && op.payment.id) || op.contacto || op.from || op.nombre || "";
     appendObject_(getSheet_(ss, "Historial"), {
       fecha: op.queuedAt ? new Date(op.queuedAt) : new Date(),
       usuario: op.by || "",
@@ -632,9 +723,15 @@ function getPayloadText_(version, skipCache) {
     .map(function (row) { return String(row.nombre || "").trim(); })
     .filter(function (n) { return n; });
 
-  var clientes = readObjects_(getSheet_(ss, "Clientes"), tz)
-    .map(function (row) { return String(row.nombre || "").trim(); })
-    .filter(function (n) { return n; });
+  var clientes = [];
+  var telefonos = {};
+  readObjects_(getSheet_(ss, "Clientes"), tz).forEach(function (row) {
+    var name = String(row.nombre || "").trim();
+    if (!name) return;
+    clientes.push(name);
+    var tel = String(row.telefono || "").trim();
+    if (tel) telefonos[name] = tel;
+  });
 
   var text = JSON.stringify({
     ok: true,
@@ -642,6 +739,7 @@ function getPayloadText_(version, skipCache) {
     version: version,
     usuarios: usuarios,
     clientes: clientes,
+    telefonos: telefonos,
     deudas: readObjects_(getSheet_(ss, "Deudas"), tz),
     pagos: readObjects_(getSheet_(ss, "Pagos"), tz),
     clientLimits: clientLimits

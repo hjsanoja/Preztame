@@ -1,11 +1,11 @@
 import { useFocusTrap } from '../hooks/useFocusTrap';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Debt } from '../types';
 import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
-import { X, Calendar, DollarSign, ArrowUpRight, RefreshCw, Globe, AlertTriangle } from 'lucide-react';
+import { X, ArrowUpRight, RefreshCw, AlertTriangle } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
 import { formatRate, presentRate, roundUpRate } from '../lib/rate';
-import { localDay, nextMonthKey } from '../lib/format';
+import { formatUsd, localDay, nextMonthKey } from '../lib/format';
 import { normalizeTag, tagColorVar, tagLabel, tagOptions } from '../lib/tags';
 import { DebtChanges } from '../lib/ledger';
 import { accountTone, useAccounts } from './ui';
@@ -70,6 +70,11 @@ export default function DebtFormModal({
   const [montoTouched, setMontoTouched] = useState(false);
   const [mesTouched, setMesTouched] = useState(false);
   const [tasaTouched, setTasaTouched] = useState(false);
+
+  // New loan over the client's credit limit: ask before saving.
+  const [confirmOverLimit, setConfirmOverLimit] = useState(false);
+  const montoRef = useRef<HTMLInputElement>(null);
+  const reviewRef = useRef<HTMLButtonElement>(null);
 
   // Credit limit calculation for live warning
   const limitCheck = useMemo(() => {
@@ -142,6 +147,7 @@ export default function DebtFormModal({
       setTasaCambio('1.00');
       setBcvRate(null);
       setFetchError(false);
+      setConfirmOverLimit(false);
 
       if (editing) {
         setCuenta(editing.cuenta);
@@ -191,6 +197,11 @@ export default function DebtFormModal({
     }
   }, [cuenta, contacto, monto, mesPago, tasaCambio, fecha, descripcion, tipo, isOpen]);
 
+  // Move focus into the confirmation panel when it appears.
+  useEffect(() => {
+    if (confirmOverLimit) reviewRef.current?.focus();
+  }, [confirmOverLimit]);
+
   if (!isOpen) return null;
 
   // Validation rules
@@ -204,6 +215,26 @@ export default function DebtFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) return;
+    // While the over-limit confirmation is showing, only its buttons decide.
+    if (confirmOverLimit) return;
+    if (!editing && limitCheck?.isExceeded) {
+      setConfirmOverLimit(true);
+      return;
+    }
+    save();
+  };
+
+  const reviewAmount = () => {
+    setConfirmOverLimit(false);
+    requestAnimationFrame(() => {
+      montoRef.current?.focus();
+      montoRef.current?.select();
+    });
+  };
+
+  const save = () => {
+    if (!isFormValid) return;
+    setConfirmOverLimit(false);
 
     if (editing) {
       const next = {
@@ -247,6 +278,12 @@ export default function DebtFormModal({
     onClose();
   };
 
+  const labelCls = 'block text-sm font-medium text-on-surface-variant mb-1.5';
+  const inputCls = 'w-full h-12 px-4 rounded-xl border bg-surface-lowest text-on-surface text-base focus:outline-none focus:ring-2 transition';
+  const okBorder = 'border-outline-variant focus:border-primary focus:ring-primary/20';
+  const errBorder = 'border-error focus:border-error focus:ring-error/20';
+  const clientName = contacto.trim();
+
   return (
     <div className="fixed inset-0 bg-scrim/40 flex items-end sm:items-center justify-center z-50 sm:p-4 animate-fade-in">
       <div 
@@ -254,33 +291,35 @@ export default function DebtFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="debt-form-title"
-        className="bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] max-w-md w-full p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 m3-elevation-3 flex flex-col max-h-[92dvh] animate-sheet-in"
+        className="bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] max-w-md w-full m3-elevation-3 flex flex-col max-h-[92dvh] animate-sheet-in"
         onClick={(e) => e.stopPropagation()}
       >
-        
+        <div className="sm:hidden mx-auto mt-3 h-1 w-8 rounded-full bg-outline shrink-0" aria-hidden="true" />
+
         {/* Header */}
-        <div className="flex justify-between items-center pb-3 border-b border-outline-variant shrink-0">
-          <h3 id="debt-form-title" className="font-bold text-on-surface text-[17px] flex items-center">
-            <ArrowUpRight className="h-5 w-5 mr-1 text-error" />
-            {editing ? 'Editar préstamo' : 'Registrar Nuevo Préstamo'}
-          </h3>
+        <header className="flex items-center gap-3 px-6 pt-4 pb-2 shrink-0">
+          <span className="h-10 w-10 rounded-full bg-error-container text-on-error-container flex items-center justify-center shrink-0" aria-hidden="true">
+            <ArrowUpRight className="h-5 w-5" />
+          </span>
+          <h2 id="debt-form-title" className="flex-1 min-w-0 text-2xl font-semibold leading-tight">
+            {editing ? 'Editar préstamo' : 'Registrar nuevo préstamo'}
+          </h2>
           <button 
+            type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="m3-state h-12 w-12 -mr-3 flex items-center justify-center text-on-surface-variant rounded-full cursor-pointer"
+            className="m3-state h-12 w-12 -mr-3 flex items-center justify-center text-on-surface-variant rounded-full cursor-pointer shrink-0"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
         {/* Scrollable Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 pt-4 overflow-y-auto pr-1 flex-grow scrollbar-thin">
+        <form onSubmit={handleSubmit} className="space-y-5 px-6 pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 overflow-y-auto flex-grow scrollbar-thin">
           
           {/* Account owner */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1.5">
-              Asignar a Cuenta de:
-            </label>
+            <span className={labelCls}>Asignar a cuenta de</span>
             <div role="radiogroup" aria-label="Cuenta" className="flex flex-wrap gap-2">
               {accounts.map(name => {
                 const selected = cuenta === name;
@@ -292,7 +331,7 @@ export default function DebtFormModal({
                     aria-checked={selected}
                     onClick={() => setCuenta(name)}
                     className={`m3-state h-10 px-4 rounded-full text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer border ${
-                      selected ? `${accountTone(name, accounts).container} border-transparent` : 'border-outline-variant text-on-surface-variant'
+                      selected ? `${accountTone(name, accounts).container} border-transparent` : 'border-outline text-on-surface-variant'
                     }`}
                   >
                     {selected && <Check className="h-4 w-4" aria-hidden="true" />}
@@ -305,12 +344,10 @@ export default function DebtFormModal({
 
           {/* Contact (Debtor) Name */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-              Cliente
-            </label>
+            <span className={labelCls}>Cliente</span>
             <ClientPicker
               value={contacto}
-              onChange={(v) => { setContacto(v); setContactoTouched(true); }}
+              onChange={(v) => { setContacto(v); setContactoTouched(true); setConfirmOverLimit(false); }}
               // Only flag the name after something was typed, so the message
               // does not shift the form while tapping other fields.
               onBlur={() => { if (contacto.trim()) setContactoTouched(true); }}
@@ -318,58 +355,57 @@ export default function DebtFormModal({
               invalid={contactoTouched && !isContactoValid}
             />
             {contactoTouched && !isContactoValid && (
-              <span className="text-[11px] text-error mt-1 block">El nombre debe poseer al menos 2 caracteres.</span>
+              <span className="text-xs text-error mt-1 px-4 block">El nombre debe poseer al menos 2 caracteres.</span>
             )}
           </div>
 
           {/* Loan value */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-              Monto del Préstamo ($)
+            <label htmlFor="debt-monto" className={labelCls}>
+              Monto del préstamo ($)
             </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-outline font-bold">$</span>
+              <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-on-surface-variant" aria-hidden="true">$</span>
               <input 
+                ref={montoRef}
+                id="debt-monto"
                 type="number"
                 step="0.01"
                 min="0.01"
+                inputMode="decimal"
                 placeholder="0.00"
                 value={monto}
                 onChange={(e) => {
                   setMonto(e.target.value);
                   setMontoTouched(true);
+                  setConfirmOverLimit(false);
                 }}
                 onBlur={() => { if (monto) setMontoTouched(true); }}
-                className={`w-full pl-8 pr-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
-                  montoTouched
-                    ? isMontoValid 
-                      ? 'border-success focus:ring-success/20' 
-                      : 'border-error focus:ring-error/20'
-                    : 'border-outline-variant focus:ring-primary/10'
-                }`}
+                aria-invalid={montoTouched && !isMontoValid}
+                className={`${inputCls} pl-8 tabular-nums ${montoTouched && !isMontoValid ? errBorder : okBorder}`}
                 required
               />
             </div>
             {montoTouched && !isMontoValid && (
-              <span className="text-[11px] text-error mt-1 block">Por favor, introduce un monto válido superior a 0.</span>
+              <span className="text-xs text-error mt-1 px-4 block">Por favor, introduce un monto válido superior a 0.</span>
             )}
 
             {/* Live credit limit indicator */}
-            {limitCheck && limitCheck.isExceeded && (
-              <div className="bg-error-container border border-error/40 text-on-error-container rounded-xl p-3.5 mt-2.5 space-y-1.5">
-                <div className="flex items-center space-x-1.5 font-bold text-xs text-on-error-container">
-                  <AlertTriangle className="h-4 w-4 text-error shrink-0" />
-                  <span>¡Alerta: Límite de Crédito Superado!</span>
+            {limitCheck && limitCheck.isExceeded && !confirmOverLimit && (
+              <div className="mt-3 rounded-2xl bg-error-container text-on-error-container p-4 flex gap-3 text-sm">
+                <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <div className="space-y-1">
+                  <p className="font-semibold">Límite de crédito superado</p>
+                  <p className="leading-relaxed">
+                    {clientName} tiene un límite de <strong className="tabular-nums">{formatUsd(limitCheck.limit)}</strong>. Su deuda activa actual es <strong className="tabular-nums">{formatUsd(limitCheck.currentOutstanding)}</strong> y ascendería a <strong className="tabular-nums">{formatUsd(limitCheck.totalEstimated)}</strong>, superando el límite por <strong className="tabular-nums">{formatUsd(limitCheck.exceededBy)}</strong>.
+                  </p>
                 </div>
-                <p className="text-[11px] font-normal leading-relaxed text-on-error-container">
-                  {contacto.trim()} tiene un límite de <strong>${limitCheck.limit}</strong>. Su deuda activa actual es <strong>${limitCheck.currentOutstanding}</strong> y ascendería a <strong>${limitCheck.totalEstimated}</strong>, superando el límite por <strong>${limitCheck.exceededBy.toFixed(0)}</strong>.
-                </p>
               </div>
             )}
             {limitCheck && !limitCheck.isExceeded && (
-              <div className="bg-success-container border border-success/40 text-on-success-container rounded-xl p-3 mt-2.5 flex items-center justify-between text-[11px]">
-                <span className="font-medium text-on-success-container">Cupo de crédito disponible:</span>
-                <span className="tabular-nums font-bold text-on-success-container">${(limitCheck.limit - limitCheck.currentOutstanding - limitCheck.newLoanAmount).toFixed(0)} de ${limitCheck.limit}</span>
+              <div className="mt-3 rounded-2xl bg-success-container text-on-success-container px-4 py-3 flex items-center justify-between gap-3 text-sm">
+                <span>Cupo de crédito disponible</span>
+                <span className="tabular-nums font-semibold">{formatUsd(limitCheck.limit - limitCheck.currentOutstanding - limitCheck.newLoanAmount)} de {formatUsd(limitCheck.limit)}</span>
               </div>
             )}
           </div>
@@ -377,37 +413,39 @@ export default function DebtFormModal({
           {/* Month Target and Exchange Rate */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-                MES DE PAGO
+              <label htmlFor="debt-mes" className={labelCls}>
+                Mes de pago
               </label>
               <input 
+                id="debt-mes"
                 type="month"
                 value={mesPago}
                 onChange={(e) => {
                   setMesPago(e.target.value);
                   setMesTouched(true);
                 }}
-                className={`w-full px-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none bg-surface-lowest`}
+                className={`${inputCls} ${mesTouched && !isMesValid ? errBorder : okBorder}`}
                 required
               />
             </div>
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">
-                  TASA
+              <div className="flex justify-between items-center mb-1.5">
+                <label htmlFor="debt-tasa" className="block text-sm font-medium text-on-surface-variant">
+                  Tasa
                 </label>
                 <button
                   type="button"
                   onClick={() => loadBcvRate(true)}
                   disabled={loadingBcv}
-                  className="text-[11px] text-on-surface hover:text-on-primary-container font-semibold flex items-center gap-1 active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="m3-state -my-2 -mr-2 h-8 px-2 rounded-full text-sm text-primary font-semibold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
                   title="Recargar tasa oficial del Banco Central de Venezuela"
                 >
-                  <RefreshCw className={`h-3 w-3 ${loadingBcv ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 ${loadingBcv ? 'animate-spin' : ''}`} aria-hidden="true" />
                   <span>BCV</span>
                 </button>
               </div>
               <input 
+                id="debt-tasa"
                 type="number"
                 step="0.01"
                 min="0.01"
@@ -417,67 +455,67 @@ export default function DebtFormModal({
                   setTasaCambio(e.target.value);
                   setTasaTouched(true);
                 }}
-                className={`w-full px-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 transition ${
-                  tasaTouched && !isTasaValid ? 'border-error' : 'border-outline-variant'
-                }`}
+                aria-invalid={tasaTouched && !isTasaValid}
+                className={`${inputCls} tabular-nums ${tasaTouched && !isTasaValid ? errBorder : okBorder}`}
                 required
               />
-              <div className="mt-1 flex items-center justify-between text-[11px] min-h-[14px]">
-                {loadingBcv ? (
-                  <span className="text-primary font-bold animate-pulse flex items-center">
-                    Cargando BCV...
-                  </span>
-                ) : bcvRate ? (
-                  <span className="text-on-success-container font-bold flex items-center">
-                    BCV: {formatRate(bcvRate)}
-                    {tasaCambio !== formatRate(bcvRate) && (
-                      <button
-                        type="button"
-                        onClick={() => setTasaCambio(formatRate(bcvRate))}
-                        className="ml-1 text-on-surface hover:underline font-semibold cursor-pointer"
-                      >
-                        (Usar)
-                      </button>
-                    )}
-                    {tasaCambio !== formatRate(roundUpRate(bcvRate)) && (
-                      <button
-                        type="button"
-                        onClick={() => setTasaCambio(formatRate(roundUpRate(bcvRate)))}
-                        title="Redondear hacia arriba"
-                        className="ml-2 px-2 h-6 rounded-md bg-secondary-container text-on-secondary-container font-semibold cursor-pointer"
-                      >
-                        ↑ {roundUpRate(bcvRate)}
-                      </button>
-                    )}
-                  </span>
-                ) : fetchError ? (
-                  <span className="text-on-warning-container font-bold">
-                    Error BCV. Ingresa manual.
-                  </span>
-                ) : (
-                  <span className="text-outline font-medium">Tasa referencial</span>
-                )}
-              </div>
+            </div>
+            <div className="col-span-2 -mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs min-h-6" aria-live="polite">
+              {loadingBcv ? (
+                <span className="text-on-surface-variant animate-pulse">
+                  Cargando BCV...
+                </span>
+              ) : bcvRate ? (
+                <>
+                  <span className="text-on-surface-variant tabular-nums">BCV: {formatRate(bcvRate)}</span>
+                  {tasaCambio !== formatRate(bcvRate) && (
+                    <button
+                      type="button"
+                      onClick={() => setTasaCambio(formatRate(bcvRate))}
+                      className="m3-state h-6 px-2 rounded-full text-primary font-semibold cursor-pointer"
+                    >
+                      (Usar)
+                    </button>
+                  )}
+                  {tasaCambio !== formatRate(roundUpRate(bcvRate)) && (
+                    <button
+                      type="button"
+                      onClick={() => setTasaCambio(formatRate(roundUpRate(bcvRate)))}
+                      title="Redondear hacia arriba"
+                      className="m3-state h-6 px-2.5 rounded-full bg-secondary-container text-on-secondary-container font-semibold tabular-nums cursor-pointer"
+                    >
+                      ↑ {roundUpRate(bcvRate)}
+                    </button>
+                  )}
+                </>
+              ) : fetchError ? (
+                <span className="text-error">
+                  Error BCV. Ingresa manual.
+                </span>
+              ) : (
+                <span className="text-on-surface-variant">Tasa referencial</span>
+              )}
             </div>
           </div>
 
           {/* Registration Date */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-              Fecha de Registro
+            <label htmlFor="debt-fecha" className={labelCls}>
+              Fecha de registro
             </label>
             <input 
+              id="debt-fecha"
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
-              className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-xs sm:text-sm focus:outline-none"
+              className={`${inputCls} ${okBorder}`}
               required
             />
           </div>
 
           {/* Tag */}
           <fieldset>
-            <legend className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-2">Etiqueta</legend>
+            <legend className={labelCls}>Etiqueta</legend>
             <div className="flex flex-wrap gap-2">
               {tags.slice(0, 10).map(t => {
                 const selected = normalizeTag(tipo) === t;
@@ -488,7 +526,7 @@ export default function DebtFormModal({
                     aria-pressed={selected}
                     onClick={() => setTipo(t)}
                     className={`m3-state h-8 px-3 rounded-lg text-sm font-medium inline-flex items-center gap-1.5 cursor-pointer border ${
-                      selected ? 'bg-secondary-container text-on-secondary-container border-transparent' : 'border-outline-variant text-on-surface-variant'
+                      selected ? 'bg-secondary-container text-on-secondary-container border-transparent' : 'border-outline text-on-surface-variant'
                     }`}
                   >
                     {selected ? <Check className="h-4 w-4" aria-hidden="true" /> : <span className="h-2 w-2 rounded-full" style={{ background: tagColorVar(t) }} aria-hidden="true" />}
@@ -514,8 +552,9 @@ export default function DebtFormModal({
                       setNewTag(''); setAddingTag(false);
                     }}
                     placeholder="Nueva etiqueta"
+                    aria-label="Nueva etiqueta"
                     maxLength={24}
-                    className="h-8 w-36 px-3 rounded-lg border border-primary bg-surface-lowest text-sm focus:outline-none"
+                    className="h-8 w-36 px-3 rounded-lg border border-primary bg-surface-lowest text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </span>
               ) : (
@@ -528,35 +567,72 @@ export default function DebtFormModal({
 
           {/* Description Concept */}
           <div>
-            <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+            <label htmlFor="debt-descripcion" className={labelCls}>
               Concepto / Notas específicas
             </label>
             <textarea 
+              id="debt-descripcion"
               rows={2}
               placeholder="Ej. Compra de refacciones para taller o gastos escolares"
               value={descripcion}
               onChange={(e) => setDescripcion(e.target.value)}
-              className="w-full px-4 py-2.5 border border-outline-variant rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/10 resize-none transition"
+              className={`w-full px-4 py-3 rounded-xl border bg-surface-lowest text-on-surface text-base focus:outline-none focus:ring-2 resize-none transition ${okBorder}`}
             />
           </div>
 
-          {/* Action keys */}
-          <div className="pt-2 flex space-x-3 shrink-0">
-            <button 
-              type="button" 
-              onClick={onClose}
-              className="flex-1 border border-outline-variant hover:bg-surface-low text-on-surface py-3 rounded-xl font-bold text-xs sm:text-sm transition active:scale-95 cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button 
-              type="submit"
-              disabled={!isFormValid}
-              className="m3-state flex-1 h-12 rounded-full bg-primary text-on-primary disabled:opacity-40 font-semibold text-sm flex items-center justify-center cursor-pointer"
-            >
-              <span>{editing ? 'Guardar cambios' : 'Guardar préstamo'}</span>
-            </button>
-          </div>
+          {/* Over-limit confirmation (new loans only) or action keys */}
+          {confirmOverLimit && limitCheck?.isExceeded ? (
+            <div role="alert" className="rounded-2xl bg-warning-container text-on-warning-container p-4 space-y-3 text-sm">
+              <div className="flex gap-3">
+                <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <p className="font-semibold">{clientName} superaría su límite de crédito</p>
+              </div>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <dt>Límite</dt>
+                <dd className="text-right font-semibold tabular-nums">{formatUsd(limitCheck.limit)}</dd>
+                <dt>Deuda actual</dt>
+                <dd className="text-right font-semibold tabular-nums">{formatUsd(limitCheck.currentOutstanding)}</dd>
+                <dt>Quedaría en</dt>
+                <dd className="text-right font-semibold tabular-nums">{formatUsd(limitCheck.totalEstimated)}</dd>
+                <dt>Excede por</dt>
+                <dd className="text-right font-bold tabular-nums">{formatUsd(limitCheck.exceededBy)}</dd>
+              </dl>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <button
+                  ref={reviewRef}
+                  type="button"
+                  onClick={reviewAmount}
+                  className="m3-state h-10 px-4 rounded-full border border-outline text-on-warning-container text-sm font-semibold cursor-pointer"
+                >
+                  Revisar monto
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  className="m3-state h-10 px-6 rounded-full bg-primary text-on-primary text-sm font-semibold cursor-pointer"
+                >
+                  Registrar de todos modos
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="pt-1 flex justify-end gap-2 shrink-0">
+              <button 
+                type="button" 
+                onClick={onClose}
+                className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                disabled={!isFormValid}
+                className="m3-state h-10 px-6 rounded-full bg-primary text-on-primary text-sm font-semibold disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {editing ? 'Guardar cambios' : 'Guardar préstamo'}
+              </button>
+            </div>
+          )}
 
         </form>
       </div>

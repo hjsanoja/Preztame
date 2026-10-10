@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, Pencil, Plus, Trash2, Users, X } from 'lucide-react';
-import { Debt } from '../types';
-import { accountTone } from './ui';
+import { Debt } from '../../types';
+import { accountTone } from '../ui';
 
 interface UsersSettingsProps {
   accounts: string[];

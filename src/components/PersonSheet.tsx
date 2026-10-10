@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Check, Copy, FileText, Plus, X } from 'lucide-react';
+import { Check, Copy, FileText, MessageCircle, Phone, Plus, X } from 'lucide-react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { getDueStatus } from '../lib/dueStatus';
 import { formatUsd, formatVes } from '../lib/format';
+import { whatsappUrl } from '../lib/phone';
 import { PersonSummary, PUNCTUALITY_LABEL } from '../lib/people';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
 import { Avatar, DueChip, ProgressBar, PunctualityChip, TagChip } from './ui';
@@ -10,6 +11,7 @@ import { Avatar, DueChip, ProgressBar, PunctualityChip, TagChip } from './ui';
 interface PersonSheetProps {
   person: PersonSummary;
   limit: number;
+  phone?: string;
   onClose: () => void;
   onOpenDebt: (id: string) => void;
   onNewDebt: (name: string) => void;
@@ -18,7 +20,7 @@ interface PersonSheetProps {
 }
 
 // "Ficha por persona": everything about one debtor in one place.
-export default function PersonSheet({ person: p, limit, onClose, onOpenDebt, onNewDebt, onStatement, onNotify }: PersonSheetProps) {
+export default function PersonSheet({ person: p, limit, phone = '', onClose, onOpenDebt, onNewDebt, onStatement, onNotify }: PersonSheetProps) {
   const ref = useFocusTrap<HTMLDivElement>(true);
   const [copied, setCopied] = useState(false);
   const loans = [...p.deudas].sort((a, b) => (a.estado === b.estado ? b.fecha.localeCompare(a.fecha) : a.estado === 'pendiente' ? -1 : 1));
@@ -33,6 +35,8 @@ export default function PersonSheet({ person: p, limit, onClose, onOpenDebt, onN
     const pending = loans.filter(d => d.estado === 'pendiente');
     const lines = pending.map(d => `• ${d.descripcion || 'Préstamo'} (${formatMonthName(d.mesPago)}): ${formatUsd(d.saldo)}`).join('\n');
     const text = `Hola ${p.name}, te escribo para recordarte el saldo pendiente de ${formatUsd(p.porCobrar)}:\n${lines}\n¡Gracias!`;
+    const wa = whatsappUrl(phone, text);
+    if (wa) { window.open(wa, '_blank', 'noopener'); return; }
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -62,6 +66,11 @@ export default function PersonSheet({ person: p, limit, onClose, onOpenDebt, onN
               <PunctualityChip value={p.punctuality} label={PUNCTUALITY_LABEL[p.punctuality]} />
             </div>
             <p className="mt-1 text-xs text-on-surface-variant">{detail}</p>
+            {phone && (
+              <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="mt-1 inline-flex items-center gap-1 text-xs text-primary font-semibold">
+                <Phone className="h-3.5 w-3.5" /> {phone}
+              </a>
+            )}
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="m3-state h-12 w-12 -mr-3 rounded-full flex items-center justify-center text-on-surface-variant cursor-pointer">
             <X className="h-5 w-5" />
@@ -99,7 +108,8 @@ export default function PersonSheet({ person: p, limit, onClose, onOpenDebt, onN
             </button>
             {p.porCobrar > 0 && (
               <button type="button" onClick={copyReminder} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} Copiar recordatorio
+                {copied ? <Check className="h-4 w-4" /> : phone ? <MessageCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {phone ? 'Recordar por WhatsApp' : 'Copiar recordatorio'}
               </button>
             )}
           </div>

@@ -68,8 +68,8 @@ export default function ChangeLogView({ mode, url, token, apiVersion, pendingOps
   if (needsUpdate) {
     return (
       <div className="rounded-3xl border border-dashed border-outline-variant p-8 text-center space-y-2">
-        <History className="h-10 w-10 mx-auto text-outline" aria-hidden="true" />
-        <p className="font-semibold">Actualiza tu Apps Script a v7</p>
+        <History className="h-10 w-10 mx-auto text-on-surface-variant" aria-hidden="true" />
+        <p className="text-base font-semibold">Actualiza tu Apps Script a v7</p>
         <p className="text-sm text-on-surface-variant">El historial de cambios se guarda en una hoja nueva. Copia el código desde Ajustes y publica una nueva versión.</p>
       </div>
     );
@@ -91,8 +91,8 @@ export default function ChangeLogView({ mode, url, token, apiVersion, pendingOps
 
       {groups.length === 0 && !loading ? (
         <div className="rounded-3xl border border-dashed border-outline-variant p-8 text-center space-y-2">
-          <History className="h-10 w-10 mx-auto text-outline" aria-hidden="true" />
-          <p className="font-semibold">Aún no hay cambios registrados</p>
+          <History className="h-10 w-10 mx-auto text-on-surface-variant" aria-hidden="true" />
+          <p className="text-base font-semibold">Aún no hay cambios registrados</p>
           <p className="text-sm text-on-surface-variant">Cada préstamo, abono, edición o eliminación aparecerá aquí con quién lo hizo y cuándo.</p>
         </div>
       ) : (
@@ -106,7 +106,7 @@ export default function ChangeLogView({ mode, url, token, apiVersion, pendingOps
                   <span className="flex-1 min-w-0 text-sm">{e.detalle}</span>
                   <span className="flex items-center gap-1.5 shrink-0">
                     {e.pendiente && (
-                      <span className="inline-flex items-center gap-1 h-6 px-2 rounded-md bg-warning-container text-on-warning-container text-[11px] font-semibold">
+                      <span className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-warning-container text-on-warning-container text-xs font-semibold whitespace-nowrap">
                         <CloudUpload className="h-3.5 w-3.5" aria-hidden="true" /> Pendiente
                       </span>
                     )}
