@@ -702,15 +702,18 @@ function sendReminder_(ss, today, force) {
 // ============================ LECTURA + CACHÉ ============================
 
 function getPayloadText_(version, skipCache) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  // Primero las hojas nuevas: tras actualizar el script se crean aunque haya
+  // una lectura en caché. La clave incluye la versión del script para no
+  // servir la respuesta guardada por una versión anterior.
+  ensureSchema_(ss, false);
   var cache = CacheService.getScriptCache();
-  var key = "df_payload_" + version;
+  var key = "df_payload_v" + API_VERSION + "_" + version;
   if (!skipCache) {
     var cached = cacheGet_(cache, key);
     if (cached) return cached;
   }
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  ensureSchema_(ss, false);
   var tz = ss.getSpreadsheetTimeZone();
 
   var clientLimits = {};

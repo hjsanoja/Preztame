@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, minApiFor, newId, OpMeta, QueuedOp } from '../lib/ledger';
+import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, LATEST_API, minApiFor, newId, OpMeta, QueuedOp } from '../lib/ledger';
 import { describeSheetsError, fetchSnapshot, pushOps, SheetsConfig, SheetsError, SheetsErrorCode } from '../lib/sheetsApi';
 import {
   getLocalModeData,
@@ -40,6 +40,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
   const [hasLoaded, setHasLoaded] = useState(false);
   // Apps Script version (null = not known yet). Local mode supports everything.
   const [apiVersion, setApiVersion] = useState<number | null>(null);
+  const freshCheckedRef = useRef(false);
   const apiVersionRef = useRef<number | null>(null);
 
   // Refs para el código asíncrono (evitan closures con datos viejos).
@@ -125,8 +126,15 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
 
   const refreshInner = useCallback(async (fresh = false) => {
     const cfg = cfgRef.current;
-    const snap = await fetchSnapshot(cfg, fresh ? null : versionRef.current, { fresh });
+    let snap = await fetchSnapshot(cfg, fresh ? null : versionRef.current, { fresh });
     if (cfgRef.current !== cfg) return;
+    // An older version may be an answer cached by the previous script right
+    // after an update: ask once per session without the cache to be sure.
+    if (!fresh && snap.apiVersion < LATEST_API && !freshCheckedRef.current) {
+      freshCheckedRef.current = true;
+      snap = await fetchSnapshot(cfg, null, { fresh: true });
+      if (cfgRef.current !== cfg) return;
+    }
     noteApiVersion(snap.apiVersion);
     if (snap.kind === 'data') commitBase(snap.data, snap.version);
     else if (cfgRef.current.url) {

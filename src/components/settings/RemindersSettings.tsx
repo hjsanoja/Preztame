@@ -119,13 +119,13 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
           <>
             <div className="grid grid-cols-[1fr_auto] gap-2">
               <label className="block">
-                <span className="block text-xs text-on-surface-variant mb-1">Enviar a (separa con comas)</span>
+                <span className="block text-xs text-on-surface-variant mb-1">Enviar a (para varias personas, separa los correos con comas)</span>
                 <input
                   type="text"
                   inputMode="email"
                   value={emails}
                   onChange={e => setEmails(e.target.value)}
-                  placeholder="tu correo (por defecto)"
+                  placeholder="tu@correo.com, pareja@correo.com"
                   className="w-full h-10 px-3 rounded-lg border border-outline-variant bg-surface-lowest text-sm focus:outline-none focus:border-primary"
                 />
               </label>
@@ -137,6 +137,7 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
                 </select>
               </label>
             </div>
+            <p className="text-xs text-on-surface-variant -mt-1">Los recordatorios diarios y el resumen mensual llegan a todos los correos de la lista. Vacío = solo al dueño de la hoja.</p>
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm cursor-pointer">
                 <input type="checkbox" checked={daily} onChange={e => setDaily(e.target.checked)} className="h-4 w-4 accent-[var(--md-primary)]" />
