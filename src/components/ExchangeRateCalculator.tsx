@@ -67,46 +67,46 @@ export default function ExchangeRateCalculator({ deudas }: ExchangeRateCalculato
   };
 
   return (
-    <div id="exchange-rate-calculator" className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
+    <div id="exchange-rate-calculator" className="bg-surface-lowest border border-outline-variant/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center space-x-2">
-            <div className="p-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-xl shrink-0">
+            <div className="p-2 bg-tertiary-container text-tertiary border border-tertiary/40 rounded-xl shrink-0">
               <Calculator className="h-5 w-5" />
             </div>
             <div>
-              <h4 className="font-black text-slate-900 text-base">Conversión y Tasas Cambiarias</h4>
-              <p className="text-xs text-slate-500 font-medium">Historial de tasa USD / VES aplicada en préstamos</p>
+              <h4 className="font-bold text-on-surface text-base">Conversión y Tasas Cambiarias</h4>
+              <p className="text-xs text-on-surface-variant font-medium">Historial de tasa USD / VES aplicada en préstamos</p>
             </div>
           </div>
-          <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 font-mono">
+          <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-tertiary-container text-on-tertiary-container tabular-nums">
             Bs. {rateStats.latestRate.toFixed(2)}
           </span>
         </div>
 
         {/* Rate Metrics summary */}
-        <div className="grid grid-cols-3 gap-2 my-4 bg-slate-50/80 p-3 rounded-xl border border-slate-100 text-center">
+        <div className="grid grid-cols-3 gap-2 my-4 bg-surface-low/80 p-3 rounded-xl border border-outline-variant text-center">
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Tasa Prom.</span>
-            <span className="text-xs font-bold text-slate-800 font-mono">Bs. {rateStats.avgRate.toFixed(2)}</span>
+            <span className="text-[11px] font-bold text-outline uppercase tracking-widest block">Tasa Prom.</span>
+            <span className="text-xs font-bold text-on-surface tabular-nums">Bs. {rateStats.avgRate.toFixed(2)}</span>
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Min. Tasa</span>
-            <span className="text-xs font-bold text-emerald-700 font-mono">Bs. {rateStats.minRate.toFixed(2)}</span>
+            <span className="text-[11px] font-bold text-outline uppercase tracking-widest block">Min. Tasa</span>
+            <span className="text-xs font-bold text-on-success-container tabular-nums">Bs. {rateStats.minRate.toFixed(2)}</span>
           </div>
           <div>
-            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Max. Tasa</span>
-            <span className="text-xs font-bold text-purple-700 font-mono">Bs. {rateStats.maxRate.toFixed(2)}</span>
+            <span className="text-[11px] font-bold text-outline uppercase tracking-widest block">Max. Tasa</span>
+            <span className="text-xs font-bold text-on-tertiary-container tabular-nums">Bs. {rateStats.maxRate.toFixed(2)}</span>
           </div>
         </div>
 
         {/* Interactive Converter Form */}
-        <div className="space-y-3 bg-purple-50/40 p-3.5 rounded-2xl border border-purple-100/80">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+        <div className="space-y-3 bg-tertiary-container/40 p-3.5 rounded-2xl border border-tertiary/80">
+          <div className="flex items-center justify-between text-xs font-bold text-on-surface">
             <span>Calculadora {direction === 'USD_VES' ? 'Dólar ➔ Bolívar' : 'Bolívar ➔ Dólar'}</span>
             <button
               onClick={() => setDirection(prev => prev === 'USD_VES' ? 'VES_USD' : 'USD_VES')}
-              className="text-[10px] text-purple-700 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+              className="text-[11px] text-on-tertiary-container hover:underline font-bold flex items-center gap-1 cursor-pointer"
             >
               <ArrowRightLeft className="h-3 w-3" />
               <span>Invertir</span>
@@ -115,40 +115,40 @@ export default function ExchangeRateCalculator({ deudas }: ExchangeRateCalculato
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase">
+              <label className="text-[11px] font-bold text-outline uppercase">
                 {direction === 'USD_VES' ? 'Monto USD ($)' : 'Monto VES (Bs)'}
               </label>
               <input
                 type="number"
                 value={usdInput}
                 onChange={(e) => setUsdInput(e.target.value)}
-                className="w-full mt-0.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                className="w-full mt-0.5 px-3 py-1.5 border border-outline-variant rounded-xl text-xs tabular-nums font-bold bg-surface-lowest focus:outline-none focus:ring-2 focus:ring-tertiary/20"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase">Tasa (Bs/$)</label>
+              <label className="text-[11px] font-bold text-outline uppercase">Tasa (Bs/$)</label>
               <input
                 type="number"
                 step="0.1"
                 value={customRate}
                 onChange={(e) => setCustomRate(e.target.value)}
-                className="w-full mt-0.5 px-3 py-1.5 border border-slate-200 rounded-xl text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                className="w-full mt-0.5 px-3 py-1.5 border border-outline-variant rounded-xl text-xs tabular-nums font-bold bg-surface-lowest focus:outline-none focus:ring-2 focus:ring-tertiary/20"
               />
             </div>
           </div>
 
           {/* Result Box */}
-          <div className="bg-white p-3 rounded-xl border border-purple-200/80 flex justify-between items-center">
-            <span className="text-xs font-bold text-slate-600">Resultado Estimado:</span>
-            <span className="text-sm font-black text-purple-900 font-mono">
+          <div className="bg-surface-lowest p-3 rounded-xl border border-tertiary/80 flex justify-between items-center">
+            <span className="text-xs font-bold text-on-surface-variant">Resultado Estimado:</span>
+            <span className="text-sm font-bold text-on-tertiary-container tabular-nums">
               {direction === 'USD_VES' ? formatVES(convertedResult) : formatUSD(convertedResult)}
             </span>
           </div>
         </div>
       </div>
 
-      <p className="text-[11px] text-slate-400 mt-3 pt-2 border-t border-slate-100 font-medium">
+      <p className="text-[11px] text-outline mt-3 pt-2 border-t border-outline-variant font-medium">
         💡 Registra la tasa cambiaria del día en cada préstamo para proteger el valor real de tu capital.
       </p>
     </div>

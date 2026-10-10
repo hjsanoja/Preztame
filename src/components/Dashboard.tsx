@@ -1,999 +1,380 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis
+} from 'recharts';
+import { CalendarClock, ChevronRight, CircleAlert, HandCoins, PiggyBank, Plus, TrendingUp, Wallet, X } from 'lucide-react';
 import { Debt, Payment } from '../types';
+import { activeMonths, agingBuckets, flowByMonth, outstandingByMonth, pendingByTag, summarize, topDebtors } from '../lib/analytics';
+import { getDueStatus } from '../lib/dueStatus';
+import { formatUsd, formatUsdCompact } from '../lib/format';
+import { tagColorVar, tagLabel } from '../lib/tags';
 import { formatMonthName } from '../utils/storage';
+import { readChartColors, ResolvedTheme } from '../hooks/useTheme';
+import { useFocusTrap } from '../hooks/useFocusTrap';
+import { Avatar, DueChip, ProgressBar } from './ui';
 import UpcomingDueWidget from './UpcomingDueWidget';
 import NinaVsNandoComparison from './NinaVsNandoComparison';
 import ExchangeRateCalculator from './ExchangeRateCalculator';
-import { 
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, 
-  CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts';
-import { 
-  DollarSign, CheckCircle2, TrendingUp, AlertTriangle, Clock, 
-  ChevronRight, X, Search, Filter, PieChart as PieChartIcon, 
-  BarChart3, Users, ChevronLeft, ArrowUpRight, ShieldAlert, ShieldCheck, Info
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 
 interface DashboardProps {
+  theme: ResolvedTheme;
   deudas: Debt[];
   pagos: Payment[];
   accountView: 'Ambos' | 'Nina' | 'Nando';
   onOpenNewDebt: () => void;
-  onOpenDetails?: (id: string) => void;
+  onOpenDetails: (id: string) => void;
 }
 
-export default function Dashboard({ deudas, pagos, accountView, onOpenNewDebt, onOpenDetails }: DashboardProps) {
-  
-  // Format currency helpers - No decimals as requested
-  const formatValue = (num: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-      minimumFractionDigits: 0
-    }).format(num);
-  };
+const shortMonth = (key: string) => {
+  const [y, m] = key.split('-');
+  const name = formatMonthName(key).split(' ')[0];
+  return m === '01' ? `${name} ${y.slice(2)}` : name;
+};
 
-  const formatVES = (num: number) => {
-    const formattedVal = new Intl.NumberFormat('es-VE', {
-      maximumFractionDigits: 0,
-      minimumFractionDigits: 0
-    }).format(num);
-    return `Bs. ${formattedVal}`;
-  };
-
-  // State for chart mode (defaulting to Bar chart as preferred)
-  const [chartType, setChartType] = useState<'area' | 'bar'>('bar');
-
-  // State for drill-down modal inspection
-  const [modalTitle, setModalTitle] = useState<string | null>(null);
-  const [modalDebts, setModalDebts] = useState<Debt[] | null>(null);
-  const [modalSearch, setModalSearch] = useState('');
-
-  // Filtered lists based on primary filter (Cuenta)
-  const viewDeudas = useMemo(() => {
-    return accountView === 'Ambos' ? deudas : deudas.filter(d => d.cuenta === accountView);
-  }, [deudas, accountView]);
-
-  // Unique target payment months from viewDeudas for dropdown selection
-  const uniqueMonthsOfView = useMemo(() => {
-    const list = [...new Set(viewDeudas.map(d => d.mesPago ? d.mesPago.slice(0, 7) : ''))].filter(Boolean).sort();
-    return list;
-  }, [viewDeudas]);
-
-  // Setup selectedMonth state
-  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-    const todayStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-    const pendingList = viewDeudas.filter(d => d.estado === 'pendiente' && d.mesPago).map(d => d.mesPago.slice(0, 7));
-    if (pendingList.length > 0) {
-      const sortedPending = [...new Set(pendingList)].sort();
-      if (sortedPending.includes(todayStr)) return todayStr;
-      return sortedPending[0];
-    }
-    return todayStr;
-  });
-
-  // Calculate pending collection metrics for selectedMonth
-  const monthlyMetrics = useMemo(() => {
-    let mesPrestadoVal = 0;
-    let mesPendienteVal = 0;
-    let mesPendienteConvertidoVal = 0;
-    let mesCountActivas = 0;
-    const debtsInMonth: Debt[] = [];
-
-    viewDeudas.forEach(d => {
-      const dMonth = d.mesPago ? d.mesPago.slice(0, 7) : '';
-      if (dMonth === selectedMonth) {
-        mesPrestadoVal += d.monto;
-        mesPendienteVal += d.saldo;
-        mesPendienteConvertidoVal += (d.saldo * d.tasaCambio);
-        debtsInMonth.push(d);
-        if (d.estado === 'pendiente') {
-          mesCountActivas++;
-        }
-      }
-    });
-
-    return {
-      prestado: mesPrestadoVal,
-      pendiente: mesPendienteVal,
-      pendienteConvertido: mesPendienteConvertidoVal,
-      count: mesCountActivas,
-      debts: debtsInMonth
-    };
-  }, [viewDeudas, selectedMonth]);
-
-  // Compute Core metrics
-  const stats = useMemo(() => {
-    let totalPrestadoVal = 0;
-    let totalPendienteVal = 0;
-    let prestadoConvertidoVal = 0;
-    let pendienteConvertidoVal = 0;
-    let countActivas = 0;
-    let countSaldadas = 0;
-    const activeDebtsList: Debt[] = [];
-    const settledDebtsList: Debt[] = [];
-
-    viewDeudas.forEach(d => {
-      totalPrestadoVal += d.monto;
-      totalPendienteVal += d.saldo;
-      prestadoConvertidoVal += (d.monto * d.tasaCambio);
-      pendienteConvertidoVal += (d.saldo * d.tasaCambio);
-
-      if (d.estado === 'pendiente') {
-        countActivas++;
-        activeDebtsList.push(d);
-      } else {
-        countSaldadas++;
-        settledDebtsList.push(d);
-      }
-    });
-
-    const totalCobradoVal = totalPrestadoVal - totalPendienteVal;
-    const cobradoConvertidoVal = prestadoConvertidoVal - pendienteConvertidoVal;
-    const recoveryRate = totalPrestadoVal > 0 ? (totalCobradoVal / totalPrestadoVal) * 100 : 0;
-
-    return {
-      totalPrestado: totalPrestadoVal,
-      totalPendiente: totalPendienteVal,
-      totalCobrado: totalCobradoVal,
-      prestadoConvertido: prestadoConvertidoVal,
-      pendienteConvertido: pendienteConvertidoVal,
-      cobradoConvertido: cobradoConvertidoVal,
-      recoveryRate,
-      countActivas,
-      countSaldadas,
-      totalRegistros: viewDeudas.length,
-      activeDebtsList,
-      settledDebtsList
-    };
-  }, [viewDeudas]);
-
-  // Overdue debts calculator
-  const overdueStats = useMemo(() => {
-    const todayStr = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-    let overdueCount = 0;
-    let overdueAmount = 0;
-    let overdueAmountConvertido = 0;
-    const overdueList: Debt[] = [];
-
-    viewDeudas.forEach(d => {
-      const dMonth = d.mesPago ? d.mesPago.slice(0, 7) : '';
-      if (d.estado === 'pendiente' && dMonth && dMonth < todayStr) {
-        overdueCount++;
-        overdueAmount += d.saldo;
-        overdueAmountConvertido += (d.saldo * d.tasaCambio);
-        overdueList.push(d);
-      }
-    });
-    return { count: overdueCount, amount: overdueAmount, amountConvertido: overdueAmountConvertido, list: overdueList };
-  }, [viewDeudas]);
-
-  // Health Assessment Score
-  const healthAssessment = useMemo(() => {
-    if (stats.totalPrestado === 0) {
-      return { status: 'Sin Datos', color: 'slate', text: 'No hay préstamos registrados aún.' };
-    }
-    const overdueRatio = overdueStats.amount / Math.max(1, stats.totalPendiente);
-    if (overdueRatio > 0.4) {
-      return { status: 'Riesgo Alto', color: 'rose', text: 'Más del 40% del saldo pendiente está vencido.' };
-    } else if (overdueRatio > 0.15) {
-      return { status: 'Atención Requerida', color: 'amber', text: 'Hay cobros atrasados pendientes de gestión.' };
-    } else {
-      return { status: 'Cartera Saludable', color: 'emerald', text: 'La mayoría de los cobros están al día.' };
-    }
-  }, [stats, overdueStats]);
-
-  // Historical monthly trend data
-  const monthlyData = useMemo(() => {
-    const dataMap: { [key: string]: { prestado: number; saldo: number; debts: Debt[] } } = {};
-    
-    viewDeudas.forEach(d => {
-      const rawMonth = d.mesPago || d.fecha || '';
-      const key = rawMonth.slice(0, 7) || 'Otros';
-      if (!dataMap[key]) {
-        dataMap[key] = { prestado: 0, saldo: 0, debts: [] };
-      }
-      dataMap[key].prestado += d.monto;
-      dataMap[key].saldo += d.saldo;
-      dataMap[key].debts.push(d);
-    });
-
-    const sortedKeys = Object.keys(dataMap).filter(k => k !== 'Otros').sort();
-    if (dataMap['Otros']) {
-      sortedKeys.push('Otros');
-    }
-
-    return sortedKeys.map(key => {
-      const recovered = dataMap[key].prestado - dataMap[key].saldo;
-      return {
-        mes: key === 'Otros' ? 'Otros' : formatMonthName(key),
-        sortKey: key,
-        montoTotal: Number(dataMap[key].prestado.toFixed(2)),
-        saldoPendiente: Number(dataMap[key].saldo.toFixed(2)),
-        recuperado: Number(recovered.toFixed(2)),
-        debts: dataMap[key].debts
-      };
-    });
-  }, [viewDeudas]);
-
-  // Top debtors data
-  const topDebtors = useMemo(() => {
-    const map: { [name: string]: { name: string; original: number; pendiente: number; debts: Debt[] } } = {};
-    
-    viewDeudas.forEach(d => {
-      if (d.estado === 'pendiente') {
-        if (!map[d.contacto]) {
-          map[d.contacto] = { name: d.contacto, original: 0, pendiente: 0, debts: [] };
-        }
-        map[d.contacto].original += d.monto;
-        map[d.contacto].pendiente += d.saldo;
-        map[d.contacto].debts.push(d);
-      }
-    });
-
-    return Object.values(map)
-      .map(entry => ({
-        ...entry,
-        cobrado: Number((entry.original - entry.pendiente).toFixed(2))
-      }))
-      .sort((a, b) => b.pendiente - a.pendiente)
-      .slice(0, 6);
-  }, [viewDeudas]);
-
-  // Donut distribution
-  const businessDistribution = useMemo(() => {
-    let favorCount = 0;
-    let negocioCount = 0;
-    let favorMonto = 0;
-    let negocioMonto = 0;
-
-    viewDeudas.forEach(d => {
-      if (d.tipo === 'negocio') {
-        negocioCount++;
-        if (d.estado === 'pendiente') negocioMonto += d.saldo;
-      } else {
-        favorCount++;
-        if (d.estado === 'pendiente') favorMonto += d.saldo;
-      }
-    });
-
-    return [
-      { name: 'Personales / Favores', value: favorMonto, count: favorCount, color: '#3b82f6' },
-      { name: 'Negocios / Comerciales', value: negocioMonto, count: negocioCount, color: '#8b5cf6' }
-    ].filter(v => v.value > 0 || v.count > 0);
-  }, [viewDeudas]);
-
-  // Portfolio distribution by account
-  const portfolioDistribution = useMemo(() => {
-    let ninaPendiente = 0;
-    let nandoPendiente = 0;
-    viewDeudas.forEach(d => {
-      if (d.estado === 'pendiente') {
-        if (d.cuenta === 'Nina') ninaPendiente += d.saldo;
-        if (d.cuenta === 'Nando') nandoPendiente += d.saldo;
-      }
-    });
-    const total = ninaPendiente + nandoPendiente;
-    return {
-      nina: ninaPendiente,
-      nando: nandoPendiente,
-      ninaPercent: total > 0 ? (ninaPendiente / total) * 100 : 0,
-      nandoPercent: total > 0 ? (nandoPendiente / total) * 100 : 0,
-      total
-    };
-  }, [viewDeudas]);
-
-  // Month navigation helpers
-  const handlePrevMonth = () => {
-    if (uniqueMonthsOfView.length === 0) return;
-    const currentIndex = uniqueMonthsOfView.indexOf(selectedMonth);
-    if (currentIndex > 0) {
-      setSelectedMonth(uniqueMonthsOfView[currentIndex - 1]);
-    }
-  };
-
-  const handleNextMonth = () => {
-    if (uniqueMonthsOfView.length === 0) return;
-    const currentIndex = uniqueMonthsOfView.indexOf(selectedMonth);
-    if (currentIndex >= 0 && currentIndex < uniqueMonthsOfView.length - 1) {
-      setSelectedMonth(uniqueMonthsOfView[currentIndex + 1]);
-    }
-  };
-
-  // Open modal handler
-  const openInspectModal = (title: string, debtsList: Debt[]) => {
-    setModalTitle(title);
-    setModalDebts(debtsList);
-    setModalSearch('');
-  };
-
-  // Filtered list inside modal
-  const modalFilteredDebts = useMemo(() => {
-    if (!modalDebts) return [];
-    if (!modalSearch.trim()) return modalDebts;
-    const q = modalSearch.toLowerCase();
-    return modalDebts.filter(d => 
-      d.contacto.toLowerCase().includes(q) || 
-      d.descripcion.toLowerCase().includes(q) ||
-      d.creadoPor.toLowerCase().includes(q)
-    );
-  }, [modalDebts, modalSearch]);
-
+function ChartTooltip({ active, payload, label, labelFormatter }: any) {
+  if (!active || !payload?.length) return null;
   return (
-    <div className="space-y-6 pb-12">
-      
-      {/* Top Header & Quick Actions */}
-      <div id="dashboard-header-banner" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 gemini-card rounded-2xl p-5 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-              Estadísticas Consolidadas
-            </h2>
-            <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              {accountView === 'Ambos' ? 'Vista Global' : `Cuenta ${accountView}`}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Supervisa capital activo, cobranzas del mes y rotación de deudas en tiempo real.
-          </p>
-        </div>
-
-        <button
-          onClick={onOpenNewDebt}
-          className="gemini-gradient-bg hover:opacity-95 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full transition flex items-center space-x-2 cursor-pointer shadow-md shadow-blue-500/20 shrink-0 active:scale-95 duration-150"
-        >
-          <span className="text-base font-black leading-none">+</span>
-          <span>Registrar Préstamo</span>
-        </button>
-      </div>
-
-      {/* Financial Health Summary Banner */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Banner Item 1: Health Status */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex items-center space-x-3.5">
-          <div className={`p-3 rounded-2xl shrink-0 ${
-            healthAssessment.color === 'emerald' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-            healthAssessment.color === 'amber' ? 'bg-amber-50 text-amber-600 border border-amber-100' :
-            'bg-rose-50 text-rose-600 border border-rose-100'
-          }`}>
-            {healthAssessment.color === 'emerald' ? <ShieldCheck className="h-6 w-6" /> : <ShieldAlert className="h-6 w-6" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Estado de Cartera</span>
-              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                healthAssessment.color === 'emerald' ? 'bg-emerald-100 text-emerald-800' :
-                healthAssessment.color === 'amber' ? 'bg-amber-100 text-amber-800' :
-                'bg-rose-100 text-rose-800'
-              }`}>
-                {healthAssessment.status}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-slate-700 mt-0.5">{healthAssessment.text}</p>
-          </div>
-        </div>
-
-        {/* Banner Item 2: Average Debt Size */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex items-center space-x-3.5">
-          <div className="p-3 bg-blue-50 text-blue-600 border border-blue-100 rounded-2xl shrink-0">
-            <Users className="h-6 w-6" />
-          </div>
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Promedio por Préstamo</span>
-            <p className="text-base font-black text-slate-900 mt-0.5">
-              {formatValue(stats.countActivas > 0 ? stats.totalPendiente / stats.countActivas : 0)}
-            </p>
-            <p className="text-[11px] text-slate-500 font-medium">Calculado sobre {stats.countActivas} clientes activos</p>
-          </div>
-        </div>
-
-        {/* Banner Item 3: Quick Alert shortcut */}
-        <div 
-          onClick={() => overdueStats.count > 0 && openInspectModal("Cobros Vencidos de Meses Anteriores", overdueStats.list)}
-          className={`border rounded-2xl p-4 shadow-xs flex items-center justify-between transition cursor-pointer ${
-            overdueStats.count > 0 
-              ? 'bg-rose-50/90 border-rose-200 text-rose-950 hover:bg-rose-100/80' 
-              : 'bg-emerald-50/60 border-emerald-200 text-emerald-950'
-          }`}
-        >
-          <div className="flex items-center space-x-3.5">
-            <div className={`p-3 rounded-2xl shrink-0 ${overdueStats.count > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-              <AlertTriangle className="h-6 w-6" />
-            </div>
-            <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider opacity-75">Alertas de Vencimiento</span>
-              <p className="text-sm font-extrabold mt-0.5">
-                {overdueStats.count > 0 ? `${overdueStats.count} cobros retrasados (${formatValue(overdueStats.amount)})` : '¡Al día! Cero cobros vencidos'}
-              </p>
-            </div>
-          </div>
-          {overdueStats.count > 0 && <ArrowUpRight className="h-5 w-5 text-rose-700 shrink-0" />}
-        </div>
-      </div>
-
-      {/* KPI Cards Grid - Clickable for Drill-down */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        
-        {/* KPI 1: Saldo Pendiente */}
-        <motion.div 
-          whileHover={{ y: -3 }}
-          onClick={() => openInspectModal("Deudas Pendientes Activas", stats.activeDebtsList)}
-          className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-md flex flex-col justify-between min-h-[165px] transition-all duration-200 cursor-pointer group border-l-4 border-l-rose-500"
-        >
-          <div className="flex items-center justify-between">
-            <div className="bg-rose-50 text-rose-600 p-2.5 rounded-2xl border border-rose-100 shrink-0">
-              <AlertTriangle className="h-5 w-5 text-rose-600" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/80 font-mono flex items-center gap-1 group-hover:bg-rose-600 group-hover:text-white transition">
-              <span>Inspeccionar</span>
-              <ChevronRight className="h-3 w-3" />
-            </span>
-          </div>
-          <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">Saldo por Cobrar</p>
-            <h3 className="text-2xl font-black text-rose-600 tracking-tight mt-1 leading-none font-sans">
-              {formatValue(stats.totalPendiente)}
-            </h3>
-            {stats.pendienteConvertido !== stats.totalPendiente ? (
-              <p className="text-[11px] text-slate-400 font-mono mt-1 truncate font-medium">
-                Conv: {formatVES(stats.pendienteConvertido)}
-              </p>
-            ) : (
-              <div className="h-[15px]" />
-            )}
-            <p className="text-xs text-slate-500 mt-1.5 font-semibold text-rose-700">{stats.countActivas} préstamos activos</p>
-          </div>
-        </motion.div>
-
-        {/* KPI 2: Cobros por Mes de Pago */}
-        <motion.div 
-          whileHover={{ y: -3 }}
-          className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-md flex flex-col justify-between min-h-[165px] transition-all duration-200 border-l-4 border-l-amber-500"
-        >
-          <div className="flex items-center justify-between gap-1">
-            <div className="bg-amber-50 text-amber-600 p-2.5 rounded-2xl border border-amber-100 shrink-0">
-              <Clock className="h-5 w-5 text-amber-600" />
-            </div>
-
-            {/* Month Navigation Controls */}
-            <div className="flex items-center space-x-1">
-              <button 
-                onClick={handlePrevMonth}
-                disabled={uniqueMonthsOfView.indexOf(selectedMonth) <= 0}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-500 disabled:opacity-30 cursor-pointer"
-                title="Mes anterior"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="text-[11px] font-bold font-mono text-blue-900 bg-slate-100 hover:bg-slate-200/80 py-1 px-2.5 border border-slate-200 rounded-full focus:outline-none cursor-pointer max-w-[125px] transition"
-              >
-                {uniqueMonthsOfView.length > 0 ? (
-                  uniqueMonthsOfView.map(m => (
-                    <option key={m} value={m}>{formatMonthName(m)}</option>
-                  ))
-                ) : (
-                  <option value={selectedMonth}>{formatMonthName(selectedMonth)}</option>
-                )}
-              </select>
-
-              <button 
-                onClick={handleNextMonth}
-                disabled={uniqueMonthsOfView.indexOf(selectedMonth) >= uniqueMonthsOfView.length - 1}
-                className="p-1 hover:bg-slate-100 rounded-full text-slate-500 disabled:opacity-30 cursor-pointer"
-                title="Mes siguiente"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div 
-            onClick={() => openInspectModal(`Cobros de ${formatMonthName(selectedMonth)}`, monthlyMetrics.debts)}
-            className="mt-3 cursor-pointer group"
-          >
-            <div className="flex justify-between items-center">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">Estimado {formatMonthName(selectedMonth)}</p>
-              <span className="text-[10px] text-blue-600 font-bold group-hover:underline flex items-center gap-0.5">
-                Ver deudas <ChevronRight className="h-3 w-3" />
-              </span>
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mt-1 leading-none">
-              {formatValue(monthlyMetrics.pendiente)}
-            </h3>
-            {monthlyMetrics.pendienteConvertido !== monthlyMetrics.pendiente ? (
-              <p className="text-[11px] text-slate-400 font-mono mt-1 truncate font-medium">
-                Conv: {formatVES(monthlyMetrics.pendienteConvertido)}
-              </p>
-            ) : (
-              <div className="h-[15px]" />
-            )}
-            <p className="text-xs text-slate-500 mt-1.5 font-medium">{monthlyMetrics.count} deudas con vencimiento este mes</p>
-          </div>
-        </motion.div>
-
-        {/* KPI 3: Total Prestado Histórico */}
-        <motion.div 
-          whileHover={{ y: -3 }}
-          onClick={() => openInspectModal("Histórico de Todos los Préstamos", viewDeudas)}
-          className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-md flex flex-col justify-between min-h-[165px] transition-all duration-200 cursor-pointer group border-l-4 border-l-blue-500"
-        >
-          <div className="flex items-center justify-between">
-            <div className="bg-blue-50 text-blue-600 p-2.5 rounded-2xl border border-blue-100 shrink-0">
-              <TrendingUp className="h-5 w-5 text-blue-600" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100/80 font-mono group-hover:bg-blue-600 group-hover:text-white transition">
-              Ver Todos
-            </span>
-          </div>
-          <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">Capital Otorgado</p>
-            <h3 className="text-2xl font-black text-blue-950 tracking-tight mt-1 leading-none">
-              {formatValue(stats.totalPrestado)}
-            </h3>
-            {stats.prestadoConvertido !== stats.totalPrestado ? (
-              <p className="text-[11px] text-slate-400 font-mono mt-1 truncate font-medium">
-                Conv: {formatVES(stats.prestadoConvertido)}
-              </p>
-            ) : (
-              <div className="h-[15px]" />
-            )}
-            <p className="text-xs text-slate-500 mt-1.5 font-medium">{stats.totalRegistros} préstamos en total</p>
-          </div>
-        </motion.div>
-
-        {/* KPI 4: Capital Recuperado */}
-        <motion.div 
-          whileHover={{ y: -3 }}
-          onClick={() => openInspectModal("Deudas Completamente Saldadas", stats.settledDebtsList)}
-          className="gemini-card rounded-2xl p-5 shadow-xs hover:shadow-md flex flex-col justify-between min-h-[165px] transition-all duration-200 cursor-pointer group border-l-4 border-l-emerald-500"
-        >
-          <div className="flex items-center justify-between">
-            <div className="bg-emerald-50 text-emerald-600 p-2.5 rounded-2xl border border-emerald-100 shrink-0">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-mono group-hover:bg-emerald-600 group-hover:text-white transition">
-              {Math.round(stats.recoveryRate)}% Cobrado
-            </span>
-          </div>
-          <div className="mt-3">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">Capital Recuperado</p>
-            <h3 className="text-2xl font-black text-emerald-600 tracking-tight mt-1 leading-none">
-              {formatValue(stats.totalCobrado)}
-            </h3>
-            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-              <div 
-                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" 
-                style={{ width: `${Math.min(100, stats.recoveryRate)}%` }}
-              />
-            </div>
-            <p className="text-xs text-slate-500 mt-1.5 font-medium flex justify-between">
-              <span>Saldados: {stats.countSaldadas}</span>
-              <span className="text-emerald-700 font-bold group-hover:underline">Ver saldados</span>
-            </p>
-          </div>
-        </motion.div>
-
-      </div>
-
-      {/* Interactive Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Main Graph: Historical Evolution & Monthly Flow */}
-        <div id="graph-evolution" className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <h4 className="font-black text-slate-900 text-lg">Evolución Financiera Mensual</h4>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">Comportamiento del capital otorgado vs recuperado agrupado por mes de cobro</p>
-            </div>
-
-            {/* Area vs Bar Chart Mode Toggle */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-full text-xs font-bold shrink-0 self-start sm:self-auto">
-              <button
-                onClick={() => setChartType('area')}
-                className={`px-3 py-1.5 rounded-full transition flex items-center space-x-1 cursor-pointer ${
-                  chartType === 'area' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span>Tendencia</span>
-              </button>
-              <button
-                onClick={() => setChartType('bar')}
-                className={`px-3 py-1.5 rounded-full transition flex items-center space-x-1 cursor-pointer ${
-                  chartType === 'bar' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <BarChart3 className="h-3.5 w-3.5" />
-                <span>Comparativo</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="h-72 w-full">
-            {monthlyData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                {chartType === 'area' ? (
-                  <AreaChart
-                    data={monthlyData}
-                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorRecuperado" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis 
-                      dataKey="mes" 
-                      tick={{ fill: '#64748b', fontSize: 11 }} 
-                      axisLine={{ stroke: '#e2e8f0' }}
-                      tickLine={false}
-                    />
-                    <YAxis 
-                      tick={{ fill: '#64748b', fontSize: 11 }}
-                      axisLine={false}
-                      tickLine={false}
-                      tickFormatter={(val) => `$${val}`}
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', fontSize: '12px', color: '#0f172a', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-                      formatter={(value: any) => [formatValue(Number(value)), '']}
-                    />
-                    <Legend 
-                      verticalAlign="top" 
-                      height={36} 
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }}
-                    />
-                    <Area 
-                      name="Capital Otorgado" 
-                      type="monotone" 
-                      dataKey="montoTotal" 
-                      stroke="#3b82f6" 
-                      strokeWidth={2.5}
-                      fillOpacity={1} 
-                      fill="url(#colorTotal)" 
-                    />
-                    <Area 
-                      name="Capital Recuperado" 
-                      type="monotone" 
-                      dataKey="recuperado" 
-                      stroke="#10b981" 
-                      strokeWidth={2.5}
-                      fillOpacity={1} 
-                      fill="url(#colorRecuperado)" 
-                    />
-                  </AreaChart>
-                ) : (
-                  <BarChart
-                    data={monthlyData}
-                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="mes" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                    <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(val) => `$${val}`} />
-                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', fontSize: '12px' }} formatter={(value: any) => [formatValue(Number(value)), '']} />
-                    <Legend verticalAlign="top" height={36} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
-                    <Bar name="Capital Otorgado" dataKey="montoTotal" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-                    <Bar name="Capital Recuperado" dataKey="recuperado" fill="#10b981" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 text-sm font-medium">
-                Sin datos suficientes para proyectar la evolución.
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-slate-100 pt-3 mt-3 flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-400 font-medium gap-2">
-            <span>💡 Haz clic en cualquier deudor o tarjeta para ver el desglose detallado de sus préstamos.</span>
-            <span className="text-blue-600 font-bold">Resumen de {monthlyData.length} períodos</span>
-          </div>
-        </div>
-
-        {/* Top Debtors Ranking List */}
-        <div id="chart-top-debtors" className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <h4 className="font-black text-slate-900 text-lg">Deudores Principales</h4>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{topDebtors.length} activos</span>
-            </div>
-            <p className="text-xs text-slate-500 font-medium">Ranking por volumen de saldo pendiente actual</p>
-          </div>
-
-          <div className="mt-4 space-y-3.5 max-h-[290px] overflow-y-auto pr-1">
-            {topDebtors.length > 0 ? (
-              topDebtors.map((debtor, idx) => {
-                const total = debtor.original;
-                const paidPercent = total > 0 ? Math.round((debtor.cobrado / total) * 100) : 0;
-                return (
-                  <motion.div 
-                    key={debtor.name}
-                    whileHover={{ scale: 1.01 }}
-                    onClick={() => openInspectModal(`Deudas de ${debtor.name}`, debtor.debts)}
-                    className="p-3 bg-slate-50/80 hover:bg-slate-100/80 border border-slate-200/60 rounded-xl transition cursor-pointer group"
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 font-black text-[10px] flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </span>
-                        <span className="font-extrabold text-xs text-slate-900 group-hover:text-blue-600 transition truncate max-w-[130px]">
-                          {debtor.name}
-                        </span>
-                      </div>
-                      <span className="font-black text-xs text-rose-600 font-mono">
-                        {formatValue(debtor.pendiente)}
-                      </span>
-                    </div>
-
-                    {/* Mini Progress Bar */}
-                    <div className="w-full bg-slate-200/80 h-2 rounded-full overflow-hidden flex mt-2">
-                      <div 
-                        style={{ width: `${paidPercent}%` }}
-                        className="bg-emerald-500 h-full" 
-                        title={`Abonado: ${paidPercent}%`}
-                      />
-                      <div 
-                        style={{ width: `${100 - paidPercent}%` }}
-                        className="bg-rose-500 h-full" 
-                        title={`Pendiente: ${100 - paidPercent}%`}
-                      />
-                    </div>
-
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium mt-1">
-                      <span>Abonado: <strong className="text-emerald-600">{formatValue(debtor.cobrado)}</strong> ({paidPercent}%)</span>
-                      <span className="group-hover:text-blue-600 font-bold flex items-center">
-                        Detalle <ChevronRight className="h-2.5 w-2.5 ml-0.5" />
-                      </span>
-                    </div>
-                  </motion.div>
-                );
-              })
-            ) : (
-              <div className="h-48 flex items-center justify-center text-slate-400 text-xs text-center font-medium">
-                ¡Nadie debe nada! 🎉<br />Todo el capital ha sido recuperado.
-              </div>
-            )}
-          </div>
-
-          <div className="border-t border-slate-100 pt-3 mt-3 text-[11px] text-slate-400 font-medium">
-            💡 Haz clic en un cliente para inspeccionar su expediente completo.
-          </div>
-        </div>
-
-      </div>
-
-      {/* Strategic Portfolio & Type Distribution */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Widget 1: Cuentas Nina vs Nando */}
-        <div id="portfolio-account-distribution" className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <h4 className="font-black text-slate-900 text-base">Distribución por Cuentas</h4>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">Balance de capital pendiente entre Nina y Nando</p>
-          </div>
-
-          <div className="mt-4 space-y-4">
-            <div className="flex justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-slate-900" />Cuenta Nina</span>
-              <span className="font-mono">{formatValue(portfolioDistribution.nina)} ({Math.round(portfolioDistribution.ninaPercent)}%)</span>
-            </div>
-            
-            <div className="flex justify-between text-xs font-bold text-slate-700">
-              <span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500" />Cuenta Nando</span>
-              <span className="font-mono">{formatValue(portfolioDistribution.nando)} ({Math.round(portfolioDistribution.nandoPercent)}%)</span>
-            </div>
-
-            {/* Split Bar */}
-            <div className="w-full bg-slate-100 h-3.5 rounded-full overflow-hidden flex">
-              {portfolioDistribution.total > 0 ? (
-                <>
-                  <div 
-                    style={{ width: `${portfolioDistribution.ninaPercent}%` }} 
-                    className="bg-slate-900 h-full transition-all duration-300"
-                  />
-                  <div 
-                    style={{ width: `${portfolioDistribution.nandoPercent}%` }} 
-                    className="bg-amber-500 h-full transition-all duration-300"
-                  />
-                </>
-              ) : (
-                <div className="w-full bg-slate-100 h-full" />
-              )}
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-100 font-medium">
-            💡 Permite equilibrar la liquidez y el riesgo de préstamos otorgados por cada cuenta.
-          </p>
-        </div>
-
-        {/* Widget 2: Favores vs Negocios Donut Chart */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <h4 className="font-black text-slate-900 text-base">Clasificación por Propósito</h4>
-            <p className="text-xs text-slate-500 mt-0.5 font-medium">Distribución entre préstamos personales y acuerdos comerciales</p>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between">
-            <div className="h-36 w-36 shrink-0 relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={businessDistribution}
-                    innerRadius={38}
-                    outerRadius={55}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {businessDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <PieChartIcon className="h-5 w-5 text-slate-400" />
-              </div>
-            </div>
-
-            <div className="flex-1 ml-4 space-y-3 text-xs font-bold">
-              {businessDistribution.map(item => (
-                <div key={item.name} className="flex flex-col">
-                  <div className="flex items-center justify-between text-slate-700">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      {item.name}
-                    </span>
-                    <span className="font-mono text-slate-900">{formatValue(item.value)}</span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-normal ml-4">
-                    {item.count} registros vinculados
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-400 mt-2 pt-3 border-t border-slate-100 font-medium">
-            💡 Diferencia favores personales de operaciones de negocio.
-          </p>
-        </div>
-
-      </div>
-
-      {/* Advanced Control & Analysis Widgets: Agenda + Comparativa + Calculadora */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <UpcomingDueWidget 
-          deudas={viewDeudas} 
-          onOpenDetails={(id) => onOpenDetails && onOpenDetails(id)} 
-        />
-        <NinaVsNandoComparison 
-          deudas={deudas} 
-        />
-        <ExchangeRateCalculator 
-          deudas={viewDeudas} 
-        />
-      </div>
-
-      {/* Drill-Down Inspector Modal / Drawer */}
-      <AnimatePresence>
-        {modalTitle && modalDebts && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
-            >
-              {/* Modal Header */}
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                <div>
-                  <h3 className="font-black text-slate-900 text-lg">{modalTitle}</h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Mostrando {modalFilteredDebts.length} de {modalDebts.length} registros
-                  </p>
-                </div>
-                <button 
-                  onClick={() => { setModalTitle(null); setModalDebts(null); }}
-                  className="p-2 hover:bg-slate-200/80 rounded-full text-slate-500 transition cursor-pointer"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Modal Search Bar */}
-              <div className="p-4 border-b border-slate-100 bg-white">
-                <div className="relative">
-                  <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-400" />
-                  <input 
-                    type="text" 
-                    placeholder="Filtrar por cliente, descripción o creador..."
-                    value={modalSearch}
-                    onChange={(e) => setModalSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-200/80 rounded-full text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 bg-slate-50"
-                  />
-                </div>
-              </div>
-
-              {/* Modal Scrollable List */}
-              <div className="p-4 overflow-y-auto space-y-3 flex-1 bg-slate-50/30">
-                {modalFilteredDebts.length > 0 ? (
-                  modalFilteredDebts.map(debt => (
-                    <div key={debt.id} className="p-4 bg-white border border-slate-200/80 rounded-2xl shadow-2xs space-y-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-black text-slate-900 text-sm">{debt.contacto}</span>
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                              debt.cuenta === 'Nina' ? 'bg-slate-900 text-white' : 'bg-amber-500 text-white'
-                            }`}>
-                              {debt.cuenta}
-                            </span>
-                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                              debt.estado === 'pendiente' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
-                            }`}>
-                              {debt.estado === 'pendiente' ? 'Pendiente' : 'Saldado'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-slate-500 mt-1">{debt.descripcion || 'Sin nota de detalle'}</p>
-                        </div>
-
-                        <div className="text-right">
-                          <span className="font-black text-sm text-slate-900 font-mono block">
-                            {formatValue(debt.monto)}
-                          </span>
-                          {debt.saldo > 0 && debt.saldo !== debt.monto && (
-                            <span className="text-xs text-rose-600 font-bold font-mono block">
-                              Saldo: {formatValue(debt.saldo)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap justify-between items-center text-[11px] text-slate-400 font-medium pt-2 border-t border-slate-100">
-                        <span>F. Préstamo: {debt.fecha}</span>
-                        <span>Cobro Objetivo: <strong className="text-slate-700">{debt.mesPago ? formatMonthName(debt.mesPago) : 'N/A'}</strong></span>
-                        <span>Registrado por: {debt.creadoPor}</span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="py-12 text-center text-slate-400 text-xs font-medium">
-                    No hay resultados coincidentes en esta vista.
-                  </div>
-                )}
-              </div>
-
-              {/* Modal Footer */}
-              <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
-                <button 
-                  onClick={() => { setModalTitle(null); setModalDebts(null); }}
-                  className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-full font-bold text-xs transition cursor-pointer"
-                >
-                  Cerrar Visualización
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
+    <div className="rounded-xl bg-surface-high text-on-surface m3-elevation-2 px-3 py-2 text-sm min-w-36">
+      <p className="text-xs font-semibold text-on-surface-variant mb-1">{labelFormatter ? labelFormatter(label) : label}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} className="flex items-center gap-2 tabular-nums">
+          <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: p.color || p.payload?.fill }} aria-hidden="true" />
+          <span className="text-on-surface-variant">{p.name}</span>
+          <span className="ml-auto font-semibold">{formatUsd(p.value)}</span>
+        </p>
+      ))}
     </div>
   );
 }
+
+function Card({ title, subtitle, action, children, className = '' }: {
+  title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <section className={`m3-card rounded-3xl p-4 sm:p-6 ${className}`}>
+      <header className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold leading-tight">{title}</h2>
+          {subtitle && <p className="text-sm text-on-surface-variant mt-0.5">{subtitle}</p>}
+        </div>
+        {action}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function StatTile({ icon: Icon, label, value, sub, tone, onClick }: {
+  icon: typeof Wallet; label: string; value: string; sub: string;
+  tone: 'primary' | 'error' | 'warning' | 'success'; onClick?: () => void;
+}) {
+  const toneCls = {
+    primary: 'bg-primary-container text-on-primary-container',
+    error: 'bg-error-container text-on-error-container',
+    warning: 'bg-warning-container text-on-warning-container',
+    success: 'bg-success-container text-on-success-container'
+  }[tone];
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={`m3-card m3-state rounded-3xl p-4 text-left flex flex-col gap-3 ${onClick ? 'cursor-pointer' : ''}`}
+    >
+      <span className={`h-10 w-10 rounded-2xl flex items-center justify-center ${toneCls}`}>
+        <Icon className="h-5 w-5" aria-hidden="true" />
+      </span>
+      <span>
+        <span className="block text-sm text-on-surface-variant">{label}</span>
+        <span className="block text-2xl font-bold tabular-nums tracking-tight">{value}</span>
+        <span className="block text-xs text-on-surface-variant mt-0.5">{sub}</span>
+      </span>
+    </Tag>
+  );
+}
+
+export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNewDebt, onOpenDetails }: DashboardProps) {
+  const [drill, setDrill] = useState<{ title: string; ids: string[] } | null>(null);
+  const [flowTable, setFlowTable] = useState(false);
+  const today = useMemo(() => new Date(), []);
+  // Re-read token colors whenever the theme changes.
+  const colors = useMemo(() => readChartColors(), [theme]);
+
+  const viewDeudas = useMemo(() => (accountView === 'Ambos' ? deudas : deudas.filter(d => d.cuenta === accountView)), [deudas, accountView]);
+  const viewPagos = useMemo(() => {
+    const ids = new Set(viewDeudas.map(d => d.id));
+    return pagos.filter(p => ids.has(p.deudaId));
+  }, [pagos, viewDeudas]);
+
+  const s = useMemo(() => summarize(viewDeudas, viewPagos, today), [viewDeudas, viewPagos, today]);
+  const months = useMemo(() => activeMonths(viewDeudas, 12, today), [viewDeudas, today]);
+  const outstanding = useMemo(() => outstandingByMonth(viewDeudas, viewPagos, months), [viewDeudas, viewPagos, months]);
+  const flow = useMemo(() => flowByMonth(viewDeudas, viewPagos, months.slice(-6)), [viewDeudas, viewPagos, months]);
+  const aging = useMemo(() => agingBuckets(viewDeudas, today), [viewDeudas, today]);
+  const byTag = useMemo(() => pendingByTag(viewDeudas), [viewDeudas]);
+  const top = useMemo(() => topDebtors(viewDeudas, 5), [viewDeudas]);
+  const recoveredPct = s.prestado > 0 ? (s.recuperado / s.prestado) * 100 : 0;
+  const pendingIds = useMemo(() => viewDeudas.filter(d => d.estado === 'pendiente').map(d => d.id), [viewDeudas]);
+
+  if (viewDeudas.length === 0) {
+    return (
+      <div className="m3-card rounded-[28px] p-10 text-center space-y-4">
+        <PiggyBank className="h-12 w-12 mx-auto text-primary" aria-hidden="true" />
+        <h2 className="text-2xl font-semibold">Aún no hay préstamos{accountView !== 'Ambos' ? ` en la cuenta de ${accountView}` : ''}</h2>
+        <p className="text-on-surface-variant">Cuando registres uno verás aquí cuánto te deben, qué vence y cómo vas cobrando.</p>
+        <button type="button" onClick={onOpenNewDebt} className="m3-state h-12 px-6 rounded-full bg-primary text-on-primary font-semibold inline-flex items-center gap-2 cursor-pointer">
+          <Plus className="h-5 w-5" /> Registrar préstamo
+        </button>
+      </div>
+    );
+  }
+
+  const axisTick = { fill: colors.muted, fontSize: 12 };
+  const maxTag = Math.max(...byTag.map(t => t.saldo), 1);
+  const maxTop = Math.max(...top.map(t => t.saldo), 1);
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+
+      {/* Hero: how much is owed */}
+      <section className="rounded-[28px] bg-primary-container text-on-primary-container p-5 sm:p-7 flex flex-col lg:flex-row lg:items-end gap-5">
+        <div className="flex-1">
+          <p className="text-sm font-medium opacity-80">Te deben en total</p>
+          <p className="text-5xl sm:text-6xl font-bold tracking-tight tabular-nums leading-none mt-2">{formatUsd(s.porCobrar)}</p>
+          <p className="text-sm mt-3 opacity-80">
+            {s.activos} préstamo{s.activos === 1 ? '' : 's'} activo{s.activos === 1 ? '' : 's'} · {s.personas} persona{s.personas === 1 ? '' : 's'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setDrill({ title: 'Préstamos vencidos', ids: s.vencidoIds })} disabled={!s.vencidoIds.length}
+            className="m3-state h-10 px-4 rounded-full bg-surface-lowest text-on-surface text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:cursor-default">
+            <CircleAlert className="h-4 w-4 text-error" aria-hidden="true" />
+            Vencido {formatUsd(s.vencido)}
+          </button>
+          <button type="button" onClick={() => setDrill({ title: 'Vencen este mes', ids: s.venceMesIds })} disabled={!s.venceMesIds.length}
+            className="m3-state h-10 px-4 rounded-full bg-surface-lowest text-on-surface text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:cursor-default">
+            <CalendarClock className="h-4 w-4 text-tertiary" aria-hidden="true" />
+            Este mes {formatUsd(s.venceMes)}
+          </button>
+        </div>
+      </section>
+
+      {/* KPI tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatTile icon={Wallet} tone="primary" label="Prestado" value={formatUsd(s.prestado)} sub={`${viewDeudas.length} préstamos en total`} />
+        <StatTile icon={TrendingUp} tone="success" label="Recuperado" value={formatUsd(s.recuperado)} sub={`${Math.round(recoveredPct)}% de lo prestado`} />
+        <StatTile icon={CircleAlert} tone="error" label="Vencido" value={formatUsd(s.vencido)} sub={`${s.vencidoIds.length} préstamo${s.vencidoIds.length === 1 ? '' : 's'} · ver`}
+          onClick={() => setDrill({ title: 'Préstamos vencidos', ids: s.vencidoIds })} />
+        <StatTile icon={HandCoins} tone="warning" label="Cobrado este mes" value={formatUsd(s.cobradoMes)} sub={formatMonthName(months[months.length - 1])} />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
+
+        {/* Outstanding balance over time (single series: title names it) */}
+        <Card className="xl:col-span-2" title="Saldo por cobrar" subtitle="Lo que te deben al cierre de cada mes">
+          <div className="h-60 sm:h-72 -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={outstanding} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="df-area" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={colors.series[0]} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={colors.series[0]} stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke={colors.grid} />
+                <XAxis dataKey="mes" tickFormatter={shortMonth} tick={axisTick} tickLine={false} axisLine={{ stroke: colors.axis }} interval="preserveStartEnd" minTickGap={16} />
+                <YAxis tickFormatter={formatUsdCompact} tick={axisTick} tickLine={false} axisLine={false} width={48} />
+                <Tooltip content={<ChartTooltip labelFormatter={formatMonthName} />} cursor={{ stroke: colors.axis, strokeWidth: 1 }} />
+                <Area type="monotone" dataKey="saldo" name="Por cobrar" stroke={colors.series[0]} strokeWidth={2} fill="url(#df-area)"
+                  dot={false} activeDot={{ r: 5, stroke: colors.surface, strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Top debtors */}
+        <Card title="Quién te debe más" subtitle="Saldo pendiente por persona">
+          <ol className="space-y-3">
+            {top.map(t => (
+              <li key={t.name}>
+                <button type="button" onClick={() => setDrill({ title: t.name, ids: t.debtIds })} className="m3-state w-full rounded-2xl p-2 -m-2 flex items-center gap-3 text-left cursor-pointer">
+                  <Avatar name={t.name} size="sm" />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold truncate">{t.name}</span>
+                      <span className="text-sm font-bold tabular-nums">{formatUsd(t.saldo)}</span>
+                    </span>
+                    <span className="mt-1.5 block h-1.5 rounded-full bg-surface-high overflow-hidden">
+                      <span className="block h-full rounded-full" style={{ width: `${(t.saldo / maxTop) * 100}%`, background: colors.series[0] }} />
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+            {top.length === 0 && <p className="text-sm text-on-surface-variant">Nadie te debe nada. 🎉</p>}
+          </ol>
+        </Card>
+
+        {/* Lent vs recovered per month (2 series: legend + table view) */}
+        <Card
+          className="xl:col-span-2"
+          title="Prestado y cobrado"
+          subtitle="Últimos 6 meses"
+          action={
+            <button type="button" onClick={() => setFlowTable(v => !v)} aria-pressed={flowTable}
+              className="m3-state h-10 px-3 rounded-full text-sm font-semibold text-primary cursor-pointer shrink-0">
+              {flowTable ? 'Ver gráfico' : 'Ver tabla'}
+            </button>
+          }
+        >
+          <div className="flex gap-4 text-sm mb-3" aria-hidden={flowTable}>
+            <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm" style={{ background: colors.series[0] }} />Prestado</span>
+            <span className="inline-flex items-center gap-2"><span className="h-3 w-3 rounded-sm" style={{ background: colors.series[2] }} />Cobrado</span>
+          </div>
+          {flowTable ? (
+            <table className="w-full text-sm tabular-nums">
+              <thead><tr className="text-on-surface-variant text-left"><th className="py-2 font-medium">Mes</th><th className="py-2 font-medium text-right">Prestado</th><th className="py-2 font-medium text-right">Cobrado</th></tr></thead>
+              <tbody>
+                {flow.map(r => (
+                  <tr key={r.mes} className="border-t border-outline-variant/60">
+                    <td className="py-2">{formatMonthName(r.mes)}</td>
+                    <td className="py-2 text-right">{formatUsd(r.prestado)}</td>
+                    <td className="py-2 text-right">{formatUsd(r.cobrado)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="h-60 sm:h-72 -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={flow} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="24%">
+                  <CartesianGrid vertical={false} stroke={colors.grid} />
+                  <XAxis dataKey="mes" tickFormatter={shortMonth} tick={axisTick} tickLine={false} axisLine={{ stroke: colors.axis }} />
+                  <YAxis tickFormatter={formatUsdCompact} tick={axisTick} tickLine={false} axisLine={false} width={48} />
+                  <Tooltip content={<ChartTooltip labelFormatter={formatMonthName} />} cursor={{ fill: colors.surfaceHigh, opacity: 0.6 }} />
+                  <Bar dataKey="prestado" name="Prestado" fill={colors.series[0]} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="cobrado" name="Cobrado" fill={colors.series[2]} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        {/* By tag */}
+        <Card title="Por etiqueta" subtitle="Saldo pendiente según el tipo de préstamo">
+          <ul className="space-y-3">
+            {byTag.map(t => (
+              <li key={t.tag}>
+                <div className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="inline-flex items-center gap-2 font-medium">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: tagColorVar(t.tag) }} aria-hidden="true" />
+                    {tagLabel(t.tag)}
+                    <span className="text-on-surface-variant font-normal">· {t.count}</span>
+                  </span>
+                  <span className="font-semibold tabular-nums">{formatUsd(t.saldo)}</span>
+                </div>
+                <div className="mt-1.5 h-2 rounded-full bg-surface-high overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(t.saldo / maxTag) * 100}%`, background: tagColorVar(t.tag) }} />
+                </div>
+              </li>
+            ))}
+            {byTag.length === 0 && <p className="text-sm text-on-surface-variant">Sin saldos pendientes.</p>}
+          </ul>
+        </Card>
+
+        {/* Aging (ordinal ramp, direct labels) */}
+        <Card className="xl:col-span-2" title="Antigüedad del saldo" subtitle="Cuánto tiempo lleva prestado lo que aún te deben">
+          <div className="h-56 -ml-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={aging} margin={{ top: 24, right: 8, left: 0, bottom: 0 }} barCategoryGap="22%">
+                <CartesianGrid vertical={false} stroke={colors.grid} />
+                <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={{ stroke: colors.axis }} />
+                <YAxis tickFormatter={formatUsdCompact} tick={axisTick} tickLine={false} axisLine={false} width={48} />
+                <Tooltip content={<ChartTooltip />} cursor={{ fill: colors.surfaceHigh, opacity: 0.6 }} />
+                <Bar dataKey="saldo" name="Saldo" radius={[4, 4, 0, 0]} maxBarSize={64}>
+                  {aging.map((_, i) => <Cell key={i} fill={colors.seq[i]} />)}
+                  <LabelList dataKey="saldo" position="top" formatter={(v: any) => (Number(v) > 0 ? formatUsd(Number(v)) : '')} style={{ fill: colors.inkVariant, fontSize: 12, fontWeight: 600 }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        {/* Recovery progress */}
+        <Card title="Recuperación" subtitle="Lo cobrado frente a lo prestado">
+          <p className="text-4xl font-bold tabular-nums">{Math.round(recoveredPct)}%</p>
+          <div className="mt-3"><ProgressBar value={recoveredPct} label={`Recuperado ${Math.round(recoveredPct)}%`} /></div>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div><dt className="text-on-surface-variant">Recuperado</dt><dd className="font-semibold tabular-nums">{formatUsd(s.recuperado)}</dd></div>
+            <div><dt className="text-on-surface-variant">Falta</dt><dd className="font-semibold tabular-nums">{formatUsd(s.porCobrar)}</dd></div>
+          </dl>
+          <button type="button" onClick={() => setDrill({ title: 'Préstamos activos', ids: pendingIds })}
+            className="m3-state mt-4 h-10 px-4 -ml-4 rounded-full text-sm font-semibold text-primary inline-flex items-center gap-1 cursor-pointer">
+            Ver préstamos activos <ChevronRight className="h-4 w-4" />
+          </button>
+        </Card>
+      </div>
+
+      {/* Agenda + accounts + exchange rate */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+        <UpcomingDueWidget deudas={viewDeudas} onOpenDetails={onOpenDetails} />
+        <NinaVsNandoComparison deudas={deudas} />
+        <ExchangeRateCalculator deudas={viewDeudas} />
+      </div>
+
+      {drill && (
+        <DrillSheet
+          title={drill.title}
+          debts={viewDeudas.filter(d => drill.ids.includes(d.id))}
+          today={today}
+          onClose={() => setDrill(null)}
+          onOpen={(id) => { setDrill(null); onOpenDetails(id); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Bottom sheet (phones) / dialog (desktop) listing the loans behind a number.
+function DrillSheet({ title, debts, today, onClose, onOpen }: {
+  title: string; debts: Debt[]; today: Date; onClose: () => void; onOpen: (id: string) => void;
+}) {
+  const ref = useFocusTrap<HTMLDivElement>(true);
+  const sorted = [...debts].sort((a, b) => b.saldo - a.saldo);
+  return (
+    <div className="fixed inset-0 z-50 bg-scrim/40 flex items-end sm:items-center justify-center animate-fade-in" onClick={onClose}
+      onKeyDown={e => { if (e.key === 'Escape') onClose(); }}>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drill-title"
+        onClick={e => e.stopPropagation()}
+        className="w-full sm:max-w-lg max-h-[80dvh] flex flex-col bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] m3-elevation-3 animate-sheet-in pb-[env(safe-area-inset-bottom)]"
+      >
+        <div className="sm:hidden mx-auto mt-3 h-1 w-8 rounded-full bg-outline" aria-hidden="true" />
+        <header className="flex items-center gap-3 px-6 pt-4 pb-2">
+          <h2 id="drill-title" className="text-xl font-semibold flex-1">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="m3-state h-12 w-12 rounded-full flex items-center justify-center cursor-pointer text-on-surface-variant">
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <ul className="overflow-y-auto px-3 pb-4">
+          {sorted.map(d => (
+            <li key={d.id}>
+              <button type="button" onClick={() => onOpen(d.id)} className="m3-state w-full rounded-2xl px-3 py-3 flex items-center gap-3 text-left cursor-pointer">
+                <Avatar name={d.contacto} size="sm" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-semibold truncate">{d.contacto}</span>
+                  <span className="mt-1 block"><DueChip status={getDueStatus(d, today)} /></span>
+                </span>
+                <span className="text-base font-bold tabular-nums">{formatUsd(d.saldo)}</span>
+              </button>
+            </li>
+          ))}
+          {sorted.length === 0 && <li className="px-3 py-6 text-sm text-on-surface-variant text-center">No hay préstamos aquí.</li>}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
