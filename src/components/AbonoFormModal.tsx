@@ -2,7 +2,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { AccountChip } from './ui';
 import React, { useState, useEffect } from 'react';
 import { Debt, Payment } from '../types';
-import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
+import { saveDraft, loadDraft, clearDraft, formatMonthName } from '../utils/storage';
 import { X, ArrowDownLeft, AlertCircle, RefreshCw, Check } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
 import { roundMoney } from '../lib/money';
@@ -167,7 +167,7 @@ export default function AbonoFormModal({
             <div className="flex items-center justify-between gap-2">
               <AccountChip cuenta={parentDebt.cuenta} />
               <span className="inline-flex items-center h-6 px-2 rounded-md bg-secondary-container text-on-secondary-container text-xs font-medium">
-                Pagar: {parentDebt.mesPago}
+                Pago: {formatMonthName(parentDebt.mesPago)}
               </span>
             </div>
             <p className="text-base font-semibold truncate">
@@ -327,7 +327,7 @@ export default function AbonoFormModal({
             <input 
               id="abono-nota"
               type="text"
-              placeholder="Ej. Depósito Oxxo, Transferencia SPEI, Efectivo"
+              placeholder="Ej. Pago móvil, Zelle, efectivo"
               value={nota}
               onChange={(e) => setNota(e.target.value)}
               className={`${inputCls} ${okBorder}`}

@@ -67,7 +67,7 @@ export default function PersonSheet({ person: p, limit, phone = '', onClose, onO
             </div>
             <p className="mt-1 text-xs text-on-surface-variant">{detail}</p>
             {phone && (
-              <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="mt-1 inline-flex items-center gap-1 text-xs text-primary font-semibold">
+              <a href={`tel:${phone.replace(/[^\d+]/g, '')}`} className="m3-state mt-1 -ml-2 h-9 px-2 rounded-full inline-flex items-center gap-1 text-sm text-primary font-semibold">
                 <Phone className="h-3.5 w-3.5" /> {phone}
               </a>
             )}

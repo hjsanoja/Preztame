@@ -34,15 +34,16 @@ export default function ConnectionCard({ sheetUrl, sheetToken, tokenInput, onTok
     if (!tokenInput.trim()) return setTest({ status: 'error-config', message: 'Falta la clave de acceso.' });
 
     setTest({ status: 'testing', message: 'Probando la conexión con Google…' });
+    const cfg = { url, token: tokenInput.trim() };
     try {
       const started = performance.now();
-      const snap = await fetchSnapshot({ url, token: tokenInput.trim() }, null, { fresh: true });
+      const snap = await fetchSnapshot(cfg, null, { fresh: true });
       const ms = Math.round(performance.now() - started);
       if (snap.kind === 'data' && !snap.version) {
         return setTest({ status: 'error-config', message: 'La hoja respondió con un código muy antiguo que no verifica la clave. Copia el código del paso 3 y publica una nueva versión.' });
       }
       const count = snap.kind === 'data' ? `${snap.data.deudas.length} préstamos y ${snap.data.pagos.length} abonos` : 'tus datos';
-      setTest({ status: 'success', message: `¡Conexión correcta! Se leyeron ${count} en ${ms} ms.` });
+      setTest({ status: 'success', message: `¡Conexión correcta! Se leyeron ${count} en ${ms} ms (Apps Script v${snap.apiVersion}).` });
     } catch (err) {
       if (err instanceof SheetsError && err.code === 'unauthorized') {
         const appEnd = tokenInput.trim().slice(-4);
@@ -53,10 +54,23 @@ export default function ConnectionCard({ sheetUrl, sheetToken, tokenInput, onTok
             : `La clave no coincide con la del Apps Script publicado (la de la app termina en "…${appEnd}"). Copia el código de nuevo, pégalo en Apps Script y publica una NUEVA VERSIÓN.`
         });
       }
-      if (err instanceof SheetsError && err.code !== 'network' && err.code !== 'timeout') {
+      if (err instanceof SheetsError && err.code === 'server') {
+        return setTest({ status: 'error-config', message: `El Apps Script respondió con un error interno: "${err.message}". Suele ser temporal (Google ocupado); prueba de nuevo en un minuto.` });
+      }
+      if (err instanceof SheetsError && err.code === 'timeout') {
+        return setTest({ status: 'error-config', message: 'Google tardó más de 15 segundos en leer la hoja completa. Suele pasar la primera vez tras actualizar el script; prueba de nuevo.' });
+      }
+      if (err instanceof SheetsError && err.code !== 'network') {
         return setTest({ status: 'error-config', message: describeSheetsError(err.code) });
       }
-      setTest({ status: 'error-cors', message: 'Google no dejó conectar ("Failed to fetch").' });
+      // The full read failed at the network level: check whether a normal
+      // (cached) read works, like the app's own sync does.
+      try {
+        await fetchSnapshot(cfg, null);
+        return setTest({ status: 'error-config', message: 'La conexión funciona (así sincroniza la app), pero la lectura completa de la hoja falló esta vez. Prueba de nuevo en un minuto; tus datos no corren riesgo.' });
+      } catch {
+        setTest({ status: 'error-cors', message: 'Google no dejó conectar ("Failed to fetch").' });
+      }
     }
   };
 
@@ -95,6 +109,9 @@ export default function ConnectionCard({ sheetUrl, sheetToken, tokenInput, onTok
               <input id="df-url" type="url" required placeholder="https://script.google.com/macros/s/.../exec" value={urlInput}
                 onChange={e => { setUrlInput(e.target.value); setTest({ status: 'idle' }); }}
                 className={`${field} font-mono text-sm`} />
+              {sheetUrl && urlInput.trim() && urlInput.trim() !== sheetUrl && (
+                <p className="text-xs text-on-surface-variant mt-1">Esta URL es distinta de la que usa la app ahora. La app sigue con la anterior hasta que toques «Guardar conexión».</p>
+              )}
             </div>
             <div>
               <label htmlFor="df-token" className={fieldLabel}>Clave de acceso (va dentro del Apps Script)</label>
@@ -140,8 +157,9 @@ export default function ConnectionCard({ sheetUrl, sheetToken, tokenInput, onTok
               {test.status === 'error-cors' && (
                 <>
                   <ol className="list-decimal pl-5 space-y-1">
-                    <li>En Apps Script, ve a <strong>Implementar → Administrar implementaciones</strong> y revisa que <strong>Quién tiene acceso</strong> diga <strong>Cualquiera</strong>.</li>
-                    <li>Abre la URL en el navegador y acepta los permisos de Google si te los pide.</li>
+                    <li>En Apps Script ve a <strong>Implementar → Administrar implementaciones</strong>. En <strong>Quién tiene acceso</strong> debe decir <strong>Cualquiera</strong>. Ojo: «Cualquier usuario con cuenta de Google» <em>no</em> sirve (en el navegador abre, pero la app no puede).</li>
+                    <li>Revisa que la URL sea la de esa implementación. Si creaste una <strong>Nueva implementación</strong>, la URL cambió: lo normal es editar la que ya tenías y elegir «Nueva versión».</li>
+                    <li>Abre la URL en el navegador y acepta los permisos si te los pide. Si ves <code className="font-mono text-xs">{'{"ok":false,"error":"unauthorized"}'}</code> está bien: el script funciona y solo falta la clave, que pone la app.</li>
                   </ol>
                   {urlInput && (
                     <a href={urlInput} target="_blank" rel="noreferrer" className={`${btn.filled} bg-error text-on-error`}>
