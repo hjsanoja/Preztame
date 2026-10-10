@@ -1,5 +1,5 @@
 {
-  "name": "DeudaFlow",
+  "name": "Preztame",
   "description": "Aplicación avanzada de finanzas compartidas para registrar, analizar y sincronizar préstamos colaborativos utilizando Google Sheets.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

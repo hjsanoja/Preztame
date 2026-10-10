@@ -24,5 +24,5 @@ export function dueDigest(deudas: Debt[], today: Date = new Date()): DueDigest |
   if (pronto.length) parts.push(`${pronto.length} vence${pronto.length === 1 ? '' : 'n'} pronto (${sum(pronto)})`);
   const names = [...new Set([...vencidos, ...pronto].map(d => d.contacto.trim()))];
   const who = names.slice(0, 3).join(', ') + (names.length > 3 ? ` y ${names.length - 3} más` : '');
-  return { vencidos, pronto, title: `DeudaFlow: ${parts.join(' · ')}`, body: `Por cobrar a ${who}.` };
+  return { vencidos, pronto, title: `Preztame: ${parts.join(' · ')}`, body: `Por cobrar a ${who}.` };
 }

@@ -15,7 +15,7 @@ describe('dueDigest', () => {
     ], today)!;
     expect(d.vencidos.map(x => x.id)).toEqual(['a']);
     expect(d.pronto.map(x => x.id)).toEqual(['b']);
-    expect(d.title).toBe('DeudaFlow: 1 cobro vencido ($40) · 1 vence pronto ($60)');
+    expect(d.title).toBe('Preztame: 1 cobro vencido ($40) · 1 vence pronto ($60)');
     expect(d.body).toBe('Por cobrar a Ana, Beto.');
   });
   it('returns null when nothing is due', () => {

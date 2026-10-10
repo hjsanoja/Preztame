@@ -7,6 +7,8 @@ export interface LedgerData {
   clientLimits: Record<string, number>;
   // People who use the app (accounts). Empty = derive from the data.
   usuarios: string[];
+  // Client list ("Clientes" sheet). New names are added automatically.
+  clientes: string[];
 }
 
 export type DebtChanges = Partial<Pick<Debt, 'cuenta' | 'contacto' | 'tipo' | 'descripcion' | 'fecha' | 'mesPago' | 'tasaCambio' | 'monto'>>;
@@ -32,7 +34,15 @@ export type QueuedOp = LedgerOp & OpMeta & { opId: string; queuedAt: number };
 // Operations that need Apps Script v7.
 export const V7_ACTIONS: LedgerOp['action'][] = ['updateDebt', 'setUsers', 'renameUser'];
 
-export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [] };
+export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [], clientes: [] };
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Adds a client name to the list unless it is already there (any casing).
+export function withClient(clientes: string[], name: string): string[] {
+  const n = name.trim();
+  return !n || clientes.some(c => sameName(c, n)) ? clientes : [...clientes, n];
+}
 
 const paidFor = (pagos: Payment[], debtId: string) =>
   pagos.filter(p => p.deudaId === debtId).reduce((sum, p) => addMoney(sum, p.monto), 0);
@@ -44,7 +54,7 @@ export function applyOp(data: LedgerData, op: LedgerOp): LedgerData {
   switch (op.action) {
     case 'addDebt': {
       if (data.deudas.some(d => d.id === op.debt.id)) return data;
-      return { ...data, deudas: [op.debt, ...data.deudas] };
+      return { ...data, deudas: [op.debt, ...data.deudas], clientes: withClient(data.clientes, op.debt.contacto) };
     }
 
     case 'addPayment': {
@@ -108,7 +118,11 @@ export function applyOp(data: LedgerData, op: LedgerOp): LedgerData {
         updated.saldo = Math.max(0, subMoney(updated.monto, paidFor(data.pagos, op.id)));
         updated.estado = updated.saldo <= 0 ? 'saldado' : 'pendiente';
       }
-      return { ...data, deudas: data.deudas.map(d => (d.id === op.id ? updated : d)) };
+      return {
+        ...data,
+        deudas: data.deudas.map(d => (d.id === op.id ? updated : d)),
+        clientes: changes.contacto ? withClient(data.clientes, changes.contacto) : data.clientes
+      };
     }
 
     case 'setUsers': {
@@ -138,6 +152,13 @@ export function accountsOf(data: LedgerData): string[] {
   const list = ['Nina', 'Nando'];
   data.deudas.forEach(d => { if (d.cuenta && !list.includes(d.cuenta)) list.push(d.cuenta); });
   return list;
+}
+
+// Clients for the picker: the saved list plus anyone already in a loan.
+export function clientsOf(data: LedgerData): string[] {
+  let list = data.clientes;
+  data.deudas.forEach(d => { list = withClient(list, d.contacto); });
+  return [...list].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
 }
 
 export function applyOps(data: LedgerData, ops: LedgerOp[]): LedgerData {

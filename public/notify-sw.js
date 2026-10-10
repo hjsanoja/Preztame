@@ -1,4 +1,4 @@
-/* DeudaFlow · due-date reminders inside the service worker.
+/* Preztame · due-date reminders inside the service worker.
  * The app saves a small summary of pending loans in Cache Storage; on a
  * periodic background sync (Android, installed app) we show at most one
  * notification per day. Tapping it opens the app on the loans list. */
@@ -47,7 +47,7 @@ async function checkDue() {
   const parts = [];
   if (overdue) parts.push(overdue + ' cobro' + (overdue === 1 ? '' : 's') + ' vencido' + (overdue === 1 ? '' : 's'));
   if (soon) parts.push(soon + ' vence' + (soon === 1 ? '' : 'n') + ' pronto');
-  await self.registration.showNotification('DeudaFlow: ' + parts.join(' · '), {
+  await self.registration.showNotification('Preztame: ' + parts.join(' · '), {
     body: 'Por cobrar $' + Math.round(total) + ' a ' + names.slice(0, 3).join(', ') + (names.length > 3 ? ' y ' + (names.length - 3) + ' más' : '') + '.',
     icon: 'pwa-192.png',
     badge: 'favicon-48.png',

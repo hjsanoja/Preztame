@@ -4,9 +4,12 @@ import { Debt } from '../types';
 import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
 import { X, Calendar, DollarSign, ArrowUpRight, RefreshCw, Globe, AlertTriangle } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
+import { formatRate, presentRate, roundUpRate } from '../lib/rate';
+import { localDay, nextMonthKey } from '../lib/format';
 import { normalizeTag, tagColorVar, tagLabel, tagOptions } from '../lib/tags';
 import { DebtChanges } from '../lib/ledger';
 import { accountTone, useAccounts } from './ui';
+import ClientPicker from './ClientPicker';
 import { Check, Plus } from 'lucide-react';
 
 interface DebtFormModalProps {
@@ -18,6 +21,8 @@ interface DebtFormModalProps {
   onUpdate?: (id: string, changes: DebtChanges) => void;
   // New loan for a known person (from their profile).
   initialContacto?: string;
+  // Saved client list ("Clientes" sheet).
+  clients?: string[];
   activeUser: string;
   deudas: Debt[];
   clientLimits: Record<string, number>;
@@ -32,7 +37,8 @@ export default function DebtFormModal({
   clientLimits,
   editing = null,
   onUpdate,
-  initialContacto
+  initialContacto,
+  clients
 }: DebtFormModalProps) {
   const accounts = useAccounts();
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
@@ -42,7 +48,7 @@ export default function DebtFormModal({
   const [contacto, setContacto] = useState('');
   const [monto, setMonto] = useState('');
   const [mesPago, setMesPago] = useState('');
-  const [tasaCambio, setTasaCambio] = useState('1.0000');
+  const [tasaCambio, setTasaCambio] = useState('1.00');
   const [fecha, setFecha] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [tipo, setTipo] = useState('favor');
@@ -105,10 +111,10 @@ export default function DebtFormModal({
       if (rate) {
         setBcvRate(rate);
         setTasaCambio((current) => {
-          // If the user hasn't customized the default 1.0000 rate,
+          // If the user hasn't customized the default 1.00 rate,
           // or if they clicked manual refresh, apply the fetched rate automatically.
-          if (force || current === '1.0000' || current === '1' || current === '') {
-            return rate.toFixed(4);
+          if (force || current === '1.00' || current === '1.0000' || current === '1' || current === '') {
+            return presentRate(rate);
           }
           return current;
         });
@@ -125,14 +131,15 @@ export default function DebtFormModal({
   // Initialize dates and drafts
   useEffect(() => {
     if (isOpen) {
-      const today = new Date().toISOString().split('T')[0];
-      const curMonth = new Date().toISOString().slice(0, 7);
+      const today = localDay();
+      // New loans are usually paid the following month.
+      const curMonth = nextMonthKey();
       
       // Default initial states
       setFecha(today);
       setMesPago(curMonth);
       setCuenta(accounts.includes(activeUser) ? activeUser : accounts[0] || activeUser);
-      setTasaCambio('1.0000');
+      setTasaCambio('1.00');
       setBcvRate(null);
       setFetchError(false);
 
@@ -299,31 +306,17 @@ export default function DebtFormModal({
           {/* Contact (Debtor) Name */}
           <div>
             <label className="block text-[11px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">
-              Nombre del Solicitante / Cliente
+              Cliente
             </label>
-            <input 
-              type="text"
-              placeholder="Ej. Juan Pérez o Tía María"
-              list="df-known-contacts"
-              autoComplete="off"
+            <ClientPicker
               value={contacto}
-              onChange={(e) => {
-                setContacto(e.target.value);
-                setContactoTouched(true);
-              }}
-              onBlur={() => setContactoTouched(true)}
-              className={`w-full px-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
-                contactoTouched
-                  ? isContactoValid 
-                    ? 'border-success focus:ring-success/20' 
-                    : 'border-error focus:ring-error/20'
-                  : 'border-outline-variant focus:ring-primary/10'
-              }`}
-              required
+              onChange={(v) => { setContacto(v); setContactoTouched(true); }}
+              // Only flag the name after something was typed, so the message
+              // does not shift the form while tapping other fields.
+              onBlur={() => { if (contacto.trim()) setContactoTouched(true); }}
+              clients={clients ?? knownContacts}
+              invalid={contactoTouched && !isContactoValid}
             />
-            <datalist id="df-known-contacts">
-              {knownContacts.map(c => <option key={c} value={c} />)}
-            </datalist>
             {contactoTouched && !isContactoValid && (
               <span className="text-[11px] text-error mt-1 block">El nombre debe poseer al menos 2 caracteres.</span>
             )}
@@ -346,7 +339,7 @@ export default function DebtFormModal({
                   setMonto(e.target.value);
                   setMontoTouched(true);
                 }}
-                onBlur={() => setMontoTouched(true)}
+                onBlur={() => { if (monto) setMontoTouched(true); }}
                 className={`w-full pl-8 pr-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
                   montoTouched
                     ? isMontoValid 
@@ -416,8 +409,9 @@ export default function DebtFormModal({
               </div>
               <input 
                 type="number"
-                step="0.0001"
-                min="0.0001"
+                step="0.01"
+                min="0.01"
+                inputMode="decimal"
                 value={tasaCambio}
                 onChange={(e) => {
                   setTasaCambio(e.target.value);
@@ -435,14 +429,24 @@ export default function DebtFormModal({
                   </span>
                 ) : bcvRate ? (
                   <span className="text-on-success-container font-bold flex items-center">
-                    BCV: {bcvRate.toFixed(4)}
-                    {parseFloat(tasaCambio) !== bcvRate && (
+                    BCV: {formatRate(bcvRate)}
+                    {tasaCambio !== formatRate(bcvRate) && (
                       <button
                         type="button"
-                        onClick={() => setTasaCambio(bcvRate.toFixed(4))}
+                        onClick={() => setTasaCambio(formatRate(bcvRate))}
                         className="ml-1 text-on-surface hover:underline font-semibold cursor-pointer"
                       >
                         (Usar)
+                      </button>
+                    )}
+                    {tasaCambio !== formatRate(roundUpRate(bcvRate)) && (
+                      <button
+                        type="button"
+                        onClick={() => setTasaCambio(formatRate(roundUpRate(bcvRate)))}
+                        title="Redondear hacia arriba"
+                        className="ml-2 px-2 h-6 rounded-md bg-secondary-container text-on-secondary-container font-semibold cursor-pointer"
+                      >
+                        ↑ {roundUpRate(bcvRate)}
                       </button>
                     )}
                   </span>

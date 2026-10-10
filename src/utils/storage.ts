@@ -80,9 +80,10 @@ export function getLocalModeData(): LedgerData {
   const pagos = readJson<Payment[]>("df_local_pagos");
   const clientLimits = readJson<Record<string, number>>("df_client_limits") || {};
   const usuarios = readJson<string[]>("df_local_usuarios") || [];
-  if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits, usuarios });
+  const clientes = readJson<string[]>("df_local_clientes") || [];
+  if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits, usuarios, clientes });
 
-  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {}, usuarios: [] };
+  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {}, usuarios: [], clientes: [] };
   saveLocalModeData(seeded);
   return seeded;
 }
@@ -92,6 +93,7 @@ export function saveLocalModeData(data: LedgerData) {
   writeJson("df_local_pagos", data.pagos);
   writeJson("df_client_limits", data.clientLimits);
   writeJson("df_local_usuarios", data.usuarios);
+  writeJson("df_local_clientes", data.clientes);
 }
 
 // Local-mode change log (Sheets mode keeps it in the "Historial" sheet).

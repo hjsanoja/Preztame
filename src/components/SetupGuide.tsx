@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { ThemePreference } from '../hooks/useTheme';
 import { useAccounts } from './ui';
+import { roundRatePreference, setRoundRatePreference } from '../lib/rate';
 import { Debt, Payment } from '../types';
 import { formatMonthName, getOrCreateDraftToken, saveDraftToken } from '../utils/storage';
 import { fetchSnapshot, SheetsError, describeSheetsError } from '../lib/sheetsApi';
@@ -60,6 +61,7 @@ export default function SetupGuide({
   const [tokenInput, setTokenInput] = useState(() => sheetToken || getOrCreateDraftToken());
   const [copiedToken, setCopiedToken] = useState(false);
   const [linkInput, setLinkInput] = useState('');
+  const [roundRate, setRoundRate] = useState(roundRatePreference);
   const [copied, setCopied] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showFaq, setShowFaq] = useState<{ [key: string]: boolean }>({});
@@ -107,7 +109,7 @@ export default function SetupGuide({
       if (snap.kind === 'data' && !snap.version) {
         setTestResult({
           status: 'error-server',
-          message: 'La hoja respondió, pero con el código antiguo (v5) que no verifica la clave. Copia el código v7 de abajo y vuelve a implementar.'
+          message: 'La hoja respondió, pero con el código antiguo (v5) que no verifica la clave. Copia el código v8 de abajo y vuelve a implementar.'
         });
         return;
       }
@@ -206,7 +208,7 @@ export default function SetupGuide({
   // Backup handlers
   const handleExportBackup = () => {
     const backupData = {
-      version: "deudaflow-v3",
+      version: "preztame-v3",
       timestamp: new Date().toISOString(),
       deudas,
       pagos,
@@ -217,7 +219,7 @@ export default function SetupGuide({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `deudaflow-respaldo-${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `preztame-respaldo-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -299,10 +301,10 @@ export default function SetupGuide({
       {/* Col 1: Connection form */}
       <div className="xl:col-span-1 space-y-6">
 
-        {!isLocalMode && apiVersion !== null && apiVersion < 7 && (
+        {!isLocalMode && apiVersion !== null && apiVersion < 8 && (
           <div role="status" className="rounded-3xl bg-warning-container text-on-warning-container p-5 space-y-2">
-            <p className="font-semibold flex items-center gap-2"><AlertTriangle className="h-5 w-5" /> Actualiza tu Apps Script a v7</p>
-            <p className="text-sm">Para editar préstamos, configurar personas, ver el historial de cambios y recibir recordatorios por correo, copia el código del paso 3 (ya trae tu clave), pégalo en Apps Script y publica una <strong>nueva versión</strong>. Tus datos no cambian.</p>
+            <p className="font-semibold flex items-center gap-2"><AlertTriangle className="h-5 w-5" /> Actualiza tu Apps Script a v8</p>
+            <p className="text-sm">Para la lista de clientes, editar préstamos, configurar personas, el historial de cambios, los recordatorios y los respaldos automáticos, copia el código del paso 3 (ya trae tu clave), pégalo en Apps Script y publica una <strong>nueva versión</strong>. Tus datos no cambian.</p>
           </div>
         )}
 
@@ -310,7 +312,7 @@ export default function SetupGuide({
         <div className="m3-card rounded-3xl p-6 space-y-4">
           <h4 className="font-semibold text-on-surface text-base flex items-center">
             <Palette className="h-5 w-5 mr-2 text-primary" />
-            Apariencia
+            Apariencia y preferencias
           </h4>
           <div role="radiogroup" aria-label="Tema" className="flex h-10 rounded-full border border-outline overflow-hidden">
             {([['system', 'Sistema', SunMoon], ['light', 'Claro', Sun], ['dark', 'Oscuro', Moon]] as const).map(([value, label, Icon], i) => {
@@ -333,6 +335,18 @@ export default function SetupGuide({
             })}
           </div>
           <p className="text-xs text-on-surface-variant">"Sistema" sigue el modo claro u oscuro de tu teléfono o computadora.</p>
+          <label className="flex items-center justify-between gap-3 pt-3 border-t border-outline-variant/60 cursor-pointer">
+            <span>
+              <span className="block text-sm font-semibold">Redondear la tasa BCV hacia arriba</span>
+              <span className="block text-xs text-on-surface-variant">Al cargar la tasa del día se usa el número entero siguiente (36,47 → 37,00).</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={roundRate}
+              onChange={e => { setRoundRate(e.target.checked); setRoundRatePreference(e.target.checked); }}
+              className="h-5 w-5 shrink-0 accent-[var(--md-primary)] cursor-pointer"
+            />
+          </label>
         </div>
 
         {extraCards}
@@ -347,7 +361,7 @@ export default function SetupGuide({
           {pwa.isStandalone ? (
             <p className="text-xs text-on-success-container bg-success-container border border-success/40 rounded-xl px-3 py-2.5 font-semibold flex items-center gap-2">
               <Check className="h-4 w-4 text-success shrink-0" />
-              Estás usando DeudaFlow instalada. Funciona aunque no tengas conexión.
+              Estás usando Preztame instalada. Funciona aunque no tengas conexión.
             </p>
           ) : pwa.canInstall ? (
             <div className="space-y-2">
@@ -603,7 +617,7 @@ export default function SetupGuide({
               <div className="border-t border-outline-variant pt-4 space-y-3">
                 <h5 className="font-bold text-on-surface text-xs uppercase tracking-wider">Cargar en otro dispositivo</h5>
                 <p className="text-[11px] text-outline leading-relaxed">
-                  Copia un enlace para abrir DeudaFlow en otro teléfono ya conectado a esta misma hoja. Al abrirlo quedará seleccionada la siguiente persona de la lista; se puede cambiar arriba en cualquier momento.
+                  Copia un enlace para abrir Preztame en otro teléfono ya conectado a esta misma hoja. Al abrirlo quedará seleccionada la siguiente persona de la lista; se puede cambiar arriba en cualquier momento.
                 </p>
                 <button
                   onClick={handleCopyPartnerLink}
@@ -743,7 +757,7 @@ export default function SetupGuide({
               <div className="text-sm w-full space-y-2">
                 <p className="font-extrabold text-on-surface text-on-surface">Reemplaza el código por este bloque mejorado</p>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Limpia todo el código existente y pega este bloque (v7). Ya incluye tu clave de acceso, crea las hojas que falten (Deudas, Pagos, Limites, Usuarios e Historial) y guarda una caché para que la app cargue mucho más rápido.
+                  Limpia todo el código existente y pega este bloque (v8). Ya incluye tu clave de acceso, crea las hojas que falten (Deudas, Pagos, Limites, Usuarios, Clientes e Historial) y guarda una caché para que la app cargue mucho más rápido.
                 </p>
                 
                 {/* Apps Script Code editor display box */}

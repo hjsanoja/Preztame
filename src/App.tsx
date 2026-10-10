@@ -10,7 +10,7 @@ import { useLedger } from './hooks/useLedger';
 import { usePwa } from './hooks/usePwa';
 import InstallBanner from './components/InstallBanner';
 import { parseAutoConfigLink } from './lib/autoConfig';
-import { accountsOf, DebtChanges, LedgerOp, newId } from './lib/ledger';
+import { accountsOf, clientsOf, DebtChanges, LedgerOp, newId } from './lib/ledger';
 import { formatUsd, formatVes } from './lib/format';
 import { personKey, summarizePeople } from './lib/people';
 import { formatMonthName } from './utils/storage';
@@ -46,6 +46,10 @@ import { AccountsProvider, accountTone } from './components/ui';
 import PersonSheet from './components/PersonSheet';
 import UsersSettings from './components/UsersSettings';
 import RemindersSettings from './components/RemindersSettings';
+import BackupSettings from './components/BackupSettings';
+import SecuritySettings from './components/SecuritySettings';
+import LockScreen from './components/LockScreen';
+import { useAppLock } from './hooks/useAppLock';
 
 // Tabs are loaded on demand so the first paint does not wait for charts.
 const loadDashboard = () => import('./components/Dashboard');
@@ -139,6 +143,7 @@ export default function App() {
   // Navigation Tabs: 'resumen' | 'deudas' | 'movimientos' | 'config'
   const [currentTab, setCurrentTab] = useState<TabId>('resumen');
   const theme = useTheme();
+  const appLock = useAppLock();
 
   const [activeUser, setActiveUser] = useState<string>(initial.user);
   const [accountView, setAccountView] = useState<string>(() => {
@@ -229,7 +234,7 @@ export default function App() {
   const confirmRef = useFocusTrap<HTMLDivElement>(confirm.isOpen);
 
   const pwa = usePwa({
-    onOfflineReady: () => showToast("DeudaFlow ya funciona sin conexión en este dispositivo.", "success")
+    onOfflineReady: () => showToast("Preztame ya funciona sin conexión en este dispositivo.", "success")
   });
 
   useEffect(() => {
@@ -254,6 +259,8 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
+  const lockedRef = React.useRef(appLock.locked);
+  lockedRef.current = appLock.locked;
   const layersRef = React.useRef({ confirm: false, statement: false, abono: false, debtForm: false, details: false, person: false });
   layersRef.current = {
     confirm: confirm.isOpen,
@@ -267,6 +274,8 @@ export default function App() {
   // Global Keyboard shortcuts handling
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
+      // While locked, the keyboard belongs to the lock screen.
+      if (lockedRef.current) return;
       // Cmd+K or Ctrl+K anytime (even when editing)
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -345,7 +354,7 @@ export default function App() {
   const handleApplyAutoConfigLink = (link: string): boolean => {
     const parsed = parseAutoConfigLink(link);
     if (!parsed) {
-      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde DeudaFlow.", "warning");
+      showToast("Ese enlace no es válido. Debe ser el link de autoconfiguración copiado desde Preztame.", "warning");
       return false;
     }
     if (parsed.user) handleUserToggle(parsed.user);
@@ -539,6 +548,14 @@ export default function App() {
 
   return (
     <AccountsProvider value={accounts}>
+    {appLock.locked && (
+      <LockScreen
+        hasBiometric={!!appLock.settings.credentialId}
+        pinLength={appLock.settings.pinLength}
+        onPin={appLock.unlockWithPin}
+        onBiometric={appLock.unlockWithBiometric}
+      />
+    )}
     <div className="bg-surface text-on-surface min-h-dvh font-sans antialiased selection:bg-primary/20 md:pl-24">
 
       <NavigationRail
@@ -554,7 +571,7 @@ export default function App() {
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-3">
           <img src="./icon.svg" alt="" className="h-9 w-9 rounded-xl md:hidden" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant leading-none">DeudaFlow</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-on-surface-variant leading-none">Preztame</p>
             <h1 className="text-[22px] font-bold tracking-tight leading-tight truncate">{currentTitle}</h1>
           </div>
 
@@ -700,6 +717,7 @@ export default function App() {
               onOpenAbono={handleOpenAbonoDirect}
               onOpenNewDebt={() => setIsDebtFormOpen(true)}
               onDeleteDebt={handleDeleteDebt}
+              onEditDebt={(id) => setEditingDebtId(id)}
               onNotify={(m) => showToast(m, 'success')}
             />
           )}
@@ -758,6 +776,17 @@ export default function App() {
               onApplyAutoConfigLink={handleApplyAutoConfigLink}
               apiVersion={ledger.apiVersion}
               extraCards={<>
+                <SecuritySettings
+                  settings={appLock.settings}
+                  userName={currentUser}
+                  setPin={appLock.setPin}
+                  disable={appLock.disable}
+                  enableBiometric={appLock.enableBiometric}
+                  disableBiometric={appLock.disableBiometric}
+                  setTimeoutMin={appLock.setTimeoutMin}
+                  lockNow={appLock.lockNow}
+                  onNotify={showToast}
+                />
                 <UsersSettings accounts={accounts} deudas={deudas} activeUser={currentUser} onSetUsers={handleSetUsers} onRenameUser={handleRenameUser} />
                 <RemindersSettings
                   mode={isLocalMode ? 'local' : 'sheets'}
@@ -769,6 +798,7 @@ export default function App() {
                   notify={notifications}
                   onNotify={showToast}
                 />
+                <BackupSettings mode={isLocalMode ? 'local' : 'sheets'} url={sheetUrl} token={sheetToken} apiVersion={ledger.apiVersion} onNotify={showToast} />
               </>}
               themePreference={theme.preference}
               onThemeChange={theme.setPreference}
@@ -822,6 +852,7 @@ export default function App() {
         editing={editingDebtId ? deudas.find(d => d.id === editingDebtId) ?? null : null}
         onUpdate={handleUpdateDebt}
         initialContacto={newDebtContact}
+        clients={clientsOf(ledger.data)}
       />
 
       {/* Person profile and account statement */}
@@ -909,7 +940,7 @@ export default function App() {
           role="status"
           className="fixed z-50 left-4 right-4 md:left-auto md:right-6 md:w-[380px] bottom-[calc(5rem+5.5rem+env(safe-area-inset-bottom))] md:bottom-24 bg-inverse-surface text-inverse-on-surface rounded-xl m3-elevation-3 px-4 py-2 flex items-center gap-2 animate-sheet-in"
         >
-          <span className="text-sm flex-1 py-1">Hay una versión nueva de DeudaFlow.</span>
+          <span className="text-sm flex-1 py-1">Hay una versión nueva de Preztame.</span>
           <button
             type="button"
             onClick={pwa.dismissUpdate}

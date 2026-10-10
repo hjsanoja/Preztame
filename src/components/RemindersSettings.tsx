@@ -21,8 +21,11 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
   const [remote, setRemote] = useState<ReminderSettings | null>(null);
   const [emails, setEmails] = useState('');
   const [hour, setHour] = useState(8);
+  const [daily, setDaily] = useState(true);
+  const [monthly, setMonthly] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const canEmail = mode === 'sheets' && !!url && !!token && (apiVersion === null || apiVersion >= 7);
+  const hasMonthly = apiVersion === null || apiVersion >= 8;
 
   useEffect(() => {
     if (!canEmail) return;
@@ -32,18 +35,20 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
       setRemote(r);
       setEmails(r.emails.join(', '));
       setHour(r.hour);
+      if (r.active || r.monthly) { setDaily(r.active); setMonthly(r.monthly); }
     }).catch(() => {});
     return () => { alive = false; };
   }, [canEmail, url, token]);
 
-  const run = async (action: 'setupReminders' | 'disableReminders' | 'testReminder') => {
+  const run = async (action: 'setupReminders' | 'disableReminders' | 'testReminder' | 'testMonthly') => {
     setBusy(action);
     try {
       const list = emails.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
-      const r = await updateReminders({ url, token }, action, { emails: list, hour });
+      const r = await updateReminders({ url, token }, action, { emails: list, hour, daily, monthly: hasMonthly && monthly });
       setRemote(r);
       setEmails(r.emails.join(', '));
-      if (action === 'setupReminders') onNotify(`Recordatorio diario activado a las ${r.hour}:00 para ${r.emails.join(', ')}.`, 'success');
+      if (action === 'setupReminders') onNotify(`Correos activados a las ${r.hour}:00 para ${r.emails.join(', ')}.`, 'success');
+      if (action === 'testMonthly') onNotify(r.sent ? 'Resumen mensual de prueba enviado.' : 'No se pudo enviar el resumen.', r.sent ? 'success' : 'warning');
       if (action === 'disableReminders') onNotify('Recordatorios por correo desactivados.', 'info');
       if (action === 'testReminder') onNotify(r.sent ? 'Correo de prueba enviado. Revisa tu bandeja.' : 'No se pudo enviar el correo de prueba.', r.sent ? 'success' : 'warning');
     } catch (err) {
@@ -132,8 +137,22 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
                 </select>
               </label>
             </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={daily} onChange={e => setDaily(e.target.checked)} className="h-4 w-4 accent-[var(--md-primary)]" />
+                Cobros vencidos y por vencer (cada día)
+              </label>
+              {hasMonthly && (
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input type="checkbox" checked={monthly} onChange={e => setMonthly(e.target.checked)} className="h-4 w-4 accent-[var(--md-primary)]" />
+                  Resumen del mes anterior (el día 1 de cada mes)
+                </label>
+              )}
+            </div>
             <p className="text-xs text-on-surface-variant" aria-live="polite">
-              Estado: {remote ? (remote.active ? `activo, todos los días a las ${remote.hour}:00` : 'desactivado') : 'consultando…'}
+              Estado: {remote
+                ? [remote.active ? `diario a las ${remote.hour}:00` : '', remote.monthly ? 'resumen mensual el día 1' : ''].filter(Boolean).join(' · ') || 'desactivado'
+                : 'consultando…'}
             </p>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => void run('setupReminders')} disabled={!!busy}
@@ -144,7 +163,13 @@ export default function RemindersSettings({ mode, url, token, apiVersion, isIos,
                 className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
                 {busy === 'testReminder' && <Loader2 className="h-4 w-4 animate-spin" />} Enviar prueba
               </button>
-              {remote?.active && (
+              {hasMonthly && (
+                <button type="button" onClick={() => void run('testMonthly')} disabled={!!busy}
+                  className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
+                  {busy === 'testMonthly' && <Loader2 className="h-4 w-4 animate-spin" />} Probar resumen
+                </button>
+              )}
+              {(remote?.active || remote?.monthly) && (
                 <button type="button" onClick={() => void run('disableReminders')} disabled={!!busy}
                   className="m3-state h-10 px-4 rounded-full text-error text-sm font-semibold cursor-pointer disabled:opacity-50">
                   Desactivar

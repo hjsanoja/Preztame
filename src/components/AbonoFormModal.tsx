@@ -6,7 +6,8 @@ import { saveDraft, loadDraft, clearDraft } from '../utils/storage';
 import { X, ArrowDownLeft, AlertCircle, RefreshCw } from 'lucide-react';
 import { fetchBCVExchangeRate } from '../utils/bcv';
 import { roundMoney } from '../lib/money';
-import { formatUsd, formatVes } from '../lib/format';
+import { formatUsd, formatVes, localDay } from '../lib/format';
+import { formatRate, presentRate, roundUpRate } from '../lib/rate';
 
 interface AbonoFormModalProps {
   isOpen: boolean;
@@ -41,13 +42,15 @@ export default function AbonoFormModal({
   const [tasa, setTasa] = useState('');
   const [loadingRate, setLoadingRate] = useState(false);
   const tasaTouched = React.useRef(false);
+  const [bcv, setBcv] = useState<number | null>(null);
 
   // The automatic lookup never overwrites a rate the user already typed;
   // the "BCV" button (force) does.
   const loadRate = async (force = false) => {
     setLoadingRate(true);
     const rate = await fetchBCVExchangeRate().catch(() => null);
-    if (rate && (force || !tasaTouched.current)) setTasa(rate.toFixed(2));
+    if (rate && (force || !tasaTouched.current)) setTasa(force ? formatRate(rate) : presentRate(rate));
+    if (rate) setBcv(rate);
     setLoadingRate(false);
   };
 
@@ -59,7 +62,7 @@ export default function AbonoFormModal({
   // Initialize dates and drafts
   useEffect(() => {
     if (isOpen && parentDebt) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDay();
       setFecha(today);
 
       // Default the payment amount to the exact outstanding balance as helper
@@ -226,8 +229,8 @@ export default function AbonoFormModal({
                   </span>
                   <input
                     type="number"
-                    step="0.0001"
-                    min="0.0001"
+                    step="0.01"
+                    min="0.01"
                     inputMode="decimal"
                     placeholder={loadingRate ? 'Consultando…' : '0.00'}
                     value={tasa}
@@ -241,8 +244,14 @@ export default function AbonoFormModal({
                 <span className="text-on-surface-variant">Equivale a</span>
                 <strong className="tabular-nums">{isNaN(parsedMonto) ? '—' : formatUsd(parsedMonto)}</strong>
               </div>
+              {bcv && tasa !== formatRate(roundUpRate(bcv)) && (
+                <button type="button" onClick={() => { tasaTouched.current = true; setTasa(formatRate(roundUpRate(bcv))); }}
+                  className="h-8 px-3 rounded-lg bg-secondary-container text-on-secondary-container text-sm font-semibold cursor-pointer">
+                  Redondear tasa hacia arriba: {roundUpRate(bcv)}
+                </button>
+              )}
               {parsedTasa > 0 && (
-                <button type="button" onClick={() => setMontoBs((parentDebt.saldo * parsedTasa).toFixed(2))} className="text-sm font-semibold text-primary cursor-pointer">
+                <button type="button" onClick={() => setMontoBs((parentDebt.saldo * parsedTasa).toFixed(2))} className="block text-sm font-semibold text-primary cursor-pointer">
                   Pagar todo el saldo: {formatVes(parentDebt.saldo * parsedTasa)}
                 </button>
               )}
@@ -268,7 +277,7 @@ export default function AbonoFormModal({
                   setMonto(e.target.value);
                   setMontoTouched(true);
                 }}
-                onBlur={() => setMontoTouched(true)}
+                onBlur={() => { if (monto) setMontoTouched(true); }}
                 className={`w-full pl-8 pr-4 py-2.5 border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 transition ${
                   montoTouched
                     ? isMontoValid 

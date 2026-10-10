@@ -71,7 +71,7 @@ export function NavigationRail({ current, onNavigate, onNewDebt, theme, onThemeC
       aria-label="Secciones"
       className="hidden md:flex fixed inset-y-0 left-0 z-40 w-24 flex-col items-center gap-6 bg-surface border-r border-outline-variant/50 pt-[calc(1.25rem+env(safe-area-inset-top))] pb-6"
     >
-      <img src="./icon.svg" alt="DeudaFlow" className="h-10 w-10 rounded-xl" />
+      <img src="./icon.svg" alt="Preztame" className="h-10 w-10 rounded-xl" />
       <button
         type="button"
         onClick={onNewDebt}

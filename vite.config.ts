@@ -17,8 +17,8 @@ export default defineConfig(() => {
         includeAssets: ['icon.svg', 'favicon-48.png', 'apple-touch-icon.png', 'notify-sw.js'],
         manifest: {
           id: './',
-          name: 'DeudaFlow · Préstamos',
-          short_name: 'DeudaFlow',
+          name: 'Preztame · Préstamos',
+          short_name: 'Preztame',
           description: 'Registro de préstamos y abonos sincronizado con Google Sheets.',
           lang: 'es',
           dir: 'ltr',

@@ -26,7 +26,7 @@ export function describeSheetsError(code: SheetsErrorCode): string {
     case 'not-configured': return 'Falta configurar la URL o la clave de Google Sheets.';
     case 'unauthorized': return 'La clave de la app no coincide con la del Apps Script. Usa "Diagnosticar conexión" en Ajustes.';
     case 'no-key': return 'El Apps Script no tiene clave. Copia el código desde Ajustes (ya trae tu clave) y publica una nueva versión.';
-    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v7 desde Ajustes.';
+    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v8 desde Ajustes.';
     case 'busy': return 'Google Sheets está ocupado. Se reintentará en unos segundos.';
     case 'timeout': return 'Google Sheets tardó demasiado en responder.';
     case 'network': return 'Sin conexión con Google Sheets.';
@@ -118,7 +118,8 @@ export function normalizeLedger(raw: any): LedgerData {
     deudas: (Array.isArray(raw?.deudas) ? raw.deudas : []).filter((d: any) => d && d.id !== '' && d.id != null).map(normalizeDebt),
     pagos: (Array.isArray(raw?.pagos) ? raw.pagos : []).filter((p: any) => p && p.id !== '' && p.id != null).map(normalizePayment),
     clientLimits: normalizeLimits(raw?.clientLimits),
-    usuarios: (Array.isArray(raw?.usuarios) ? raw.usuarios : []).map((u: unknown) => String(u ?? '').trim()).filter(Boolean)
+    usuarios: (Array.isArray(raw?.usuarios) ? raw.usuarios : []).map((u: unknown) => String(u ?? '').trim()).filter(Boolean),
+    clientes: (Array.isArray(raw?.clientes) ? raw.clientes : []).map((c: unknown) => String(c ?? '').trim()).filter(Boolean)
   };
 }
 
@@ -236,6 +237,7 @@ export async function fetchChangeLog(cfg: SheetsConfig, limit = 200): Promise<Ch
 
 export interface ReminderSettings {
   active: boolean;
+  monthly: boolean;
   emails: string[];
   hour: number;
 }
@@ -243,8 +245,8 @@ export interface ReminderSettings {
 // Daily e-mail reminders sent by the Apps Script (works on any phone).
 export async function updateReminders(
   cfg: SheetsConfig,
-  action: 'getReminders' | 'setupReminders' | 'disableReminders' | 'testReminder',
-  settings?: { emails: string[]; hour: number }
+  action: 'getReminders' | 'setupReminders' | 'disableReminders' | 'testReminder' | 'testMonthly',
+  settings?: { emails: string[]; hour: number; daily?: boolean; monthly?: boolean }
 ): Promise<ReminderSettings & { sent?: boolean }> {
   assertConfigured(cfg);
   const json = await request(cfg.url, {
@@ -253,7 +255,39 @@ export async function updateReminders(
     body: JSON.stringify({ action, token: cfg.token, ...settings })
   }, 30000);
   if (!json || typeof json.active !== 'boolean') throw new SheetsError('outdated-script');
-  return { active: json.active, emails: json.emails || [], hour: Number(json.hour ?? 8), sent: json.sent };
+  return { active: json.active, monthly: !!json.monthly, emails: json.emails || [], hour: Number(json.hour ?? 8), sent: json.sent };
+}
+
+export interface BackupSettings {
+  active: boolean;
+  frequency: 'daily' | 'weekly';
+  keep: number;
+  lastBackup: string;
+  lastUrl: string;
+  folderUrl: string;
+}
+
+// Automatic copies of the Google Sheet in Drive ("Preztame · respaldos").
+export async function updateBackup(
+  cfg: SheetsConfig,
+  action: 'getBackup' | 'setupBackup' | 'disableBackup' | 'backupNow',
+  settings?: { frequency: 'daily' | 'weekly'; keep: number }
+): Promise<BackupSettings> {
+  assertConfigured(cfg);
+  const json = await request(cfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, token: cfg.token, ...settings })
+  }, 60000);
+  if (!json || typeof json.active !== 'boolean' || json.keep === undefined) throw new SheetsError('outdated-script');
+  return {
+    active: json.active,
+    frequency: json.frequency === 'weekly' ? 'weekly' : 'daily',
+    keep: Number(json.keep) || 14,
+    lastBackup: String(json.lastBackup || ''),
+    lastUrl: String(json.lastUrl || ''),
+    folderUrl: String(json.folderUrl || '')
+  };
 }
 
 export async function fetchBcvFromScript(cfg: SheetsConfig): Promise<number | null> {

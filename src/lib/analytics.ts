@@ -35,15 +35,6 @@ export function outstandingByMonth(deudas: Debt[], pagos: Payment[], months: str
   });
 }
 
-// Money lent (by loan date) and recovered (by payment date) per month.
-export function flowByMonth(deudas: Debt[], pagos: Payment[], months: string[]) {
-  const set = new Set(months);
-  const rows = new Map(months.map(m => [m, { mes: m, prestado: 0, cobrado: 0 }]));
-  deudas.forEach(d => { const m = d.fecha.slice(0, 7); if (set.has(m)) rows.get(m)!.prestado = addMoney(rows.get(m)!.prestado, d.monto); });
-  pagos.forEach(p => { const m = p.fecha.slice(0, 7); if (set.has(m)) rows.get(m)!.cobrado = addMoney(rows.get(m)!.cobrado, p.monto); });
-  return months.map(m => rows.get(m)!);
-}
-
 export const AGING_BUCKETS = [
   { label: '0–30 días', max: 30 },
   { label: '31–60 días', max: 60 },
@@ -109,4 +100,49 @@ export function summarize(deudas: Debt[], pagos: Payment[], today: Date = new Da
     venceMesIds: dueThisMonth.map(d => d.id),
     cobradoMes: fromCents(pagos.filter(p => p.fecha.slice(0, 7) === thisMonth).reduce((s, p) => s + toCents(p.monto), 0))
   };
+}
+
+// Months around today for payment-month charts: `back` months before, `ahead` after.
+export function monthsAround(today: Date = new Date(), back = 4, ahead = 1): string[] {
+  return Array.from({ length: back + ahead + 1 }, (_, i) => monthKey(new Date(today.getFullYear(), today.getMonth() - back + i, 1)));
+}
+
+// What was due each payment month, split into collected and still pending.
+// Collected can never exceed what was lent for that month.
+export function byPaymentMonth(deudas: Debt[], months: string[]) {
+  return months.map(mes => {
+    const due = deudas.filter(d => d.mesPago === mes);
+    const total = due.reduce((s, d) => s + toCents(d.monto), 0);
+    const pendiente = due.reduce((s, d) => s + toCents(d.saldo), 0);
+    return { mes, total: fromCents(total), cobrado: fromCents(total - pendiente), pendiente: fromCents(pendiente), prestamos: due.length };
+  });
+}
+
+export interface MonthDebtor {
+  key: string;
+  name: string;
+  debtIds: string[];
+  total: number;
+  cobrado: number;
+  pendiente: number;
+  estado: 'pagado' | 'pendiente' | 'vencido';
+}
+
+// Who has to pay in a given month (by payment month), one row per person.
+export function debtorsForMonth(deudas: Debt[], mes: string, today: Date = new Date()): MonthDebtor[] {
+  const rows = new Map<string, MonthDebtor>();
+  deudas.filter(d => d.mesPago === mes).forEach(d => {
+    const key = d.contacto.trim().toLowerCase();
+    const row = rows.get(key) || { key, name: d.contacto.trim(), debtIds: [], total: 0, cobrado: 0, pendiente: 0, estado: 'pagado' as const };
+    row.debtIds.push(d.id);
+    row.total = addMoney(row.total, d.monto);
+    row.pendiente = addMoney(row.pendiente, d.saldo);
+    row.cobrado = fromCents(toCents(row.total) - toCents(row.pendiente));
+    if (d.estado === 'pendiente' && d.saldo > 0) {
+      row.estado = getDueStatus(d, today).kind === 'vencido' ? 'vencido' : row.estado === 'vencido' ? 'vencido' : 'pendiente';
+    }
+    rows.set(key, row);
+  });
+  const order = { vencido: 0, pendiente: 1, pagado: 2 };
+  return [...rows.values()].sort((a, b) => order[a.estado] - order[b.estado] || b.pendiente - a.pendiente || a.name.localeCompare(b.name));
 }

@@ -108,7 +108,7 @@ export default function StatementSheet({ person: p, preparedBy, onClose, onNotif
               <div className="flex items-center gap-3">
                 <img src="./icon.svg" alt="" className="h-10 w-10 rounded-lg" crossOrigin="anonymous" />
                 <div>
-                  <p className="text-[11px] font-semibold tracking-[0.12em] text-[#44474e] uppercase">DeudaFlow</p>
+                  <p className="text-[11px] font-semibold tracking-[0.12em] text-[#44474e] uppercase">Preztame</p>
                   <p className="text-xl font-bold">Estado de cuenta</p>
                 </div>
               </div>
@@ -189,7 +189,7 @@ export default function StatementSheet({ person: p, preparedBy, onClose, onNotif
             )}
 
             <p className="mt-6 pt-3 border-t border-[#e1e5eb] text-[11px] text-[#6c6f77]">
-              Montos en dólares estadounidenses. Documento informativo generado con DeudaFlow.
+              Montos en dólares estadounidenses. Documento informativo generado con Preztame.
             </p>
           </div>
         </div>

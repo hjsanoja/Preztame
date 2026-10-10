@@ -67,11 +67,13 @@ function makeEnv() {
   const props = new Map<string, string>();
   const triggers: any[] = [];
   const mails: any[] = [];
+  const folders: any[] = [];
   const cache = new Map<string, string>();
   const ss = {
     getSheetByName: (n: string) => sheets.get(n) ?? null,
     insertSheet: (n: string) => { const s = new FakeSheet(n); sheets.set(n, s); return s; },
-    getSpreadsheetTimeZone: () => 'America/Caracas'
+    getSpreadsheetTimeZone: () => 'America/Caracas',
+    getId: () => 'sheet-1'
   };
   const context: any = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, flush: () => {} },
@@ -88,12 +90,35 @@ function makeEnv() {
     ScriptApp: {
       getProjectTriggers: () => triggers,
       deleteTrigger: (t: any) => { triggers.splice(triggers.indexOf(t), 1); },
+      WeekDay: { SUNDAY: 'SUNDAY' },
       newTrigger: (fn: string) => {
-        const b: any = { timeBased: () => b, everyDays: () => b, atHour: (h: number) => { b.hour = h; return b; }, create: () => { triggers.push({ getHandlerFunction: () => fn, hour: b.hour }); } };
+        const b: any = {
+          timeBased: () => b, everyDays: () => b, onMonthDay: (d: number) => { b.monthDay = d; return b; }, onWeekDay: (d: string) => { b.weekDay = d; return b; },
+          atHour: (h: number) => { b.hour = h; return b; },
+          create: () => { triggers.push({ getHandlerFunction: () => fn, hour: b.hour, monthDay: b.monthDay, weekDay: b.weekDay }); }
+        };
         return b;
       }
     },
     MailApp: { sendEmail: (m: any) => mails.push(m) },
+    DriveApp: (() => {
+      let n = 0;
+      const folder = { files: [] as any[], getId: () => 'folder-1', getUrl: () => 'https://drive/folder-1',
+        getFiles() { const list = this.files.filter((f: any) => !f.trashed); let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; } };
+      return {
+        folders,
+        getFolderById: (id: string) => { if (!folders.length || id !== 'folder-1') throw new Error('no'); return folders[0]; },
+        getFoldersByName: () => { let i = 0; return { hasNext: () => i < folders.length, next: () => folders[i++] }; },
+        createFolder: () => { folders.push(folder); return folder; },
+        getFileById: () => ({
+          makeCopy: (name: string, f: any) => {
+            const file = { name, created: ++n, trashed: false, getUrl: () => `https://drive/${n}`, getDateCreated: () => new Date(2026, 0, 1, 0, 0, file.created), setTrashed(v: boolean) { file.trashed = v; } };
+            f.files.push(file);
+            return file;
+          }
+        })
+      };
+    })(),
     Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }) },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ promedio: 36.5 }) }) },
     Date
@@ -106,13 +131,13 @@ function makeEnv() {
   const post = (body: any) =>
     JSON.parse(context.doPost({ postData: { contents: JSON.stringify({ token: 'test-token', ...body }) } }).text);
   const batch = (...ops: any[]) => post({ action: 'batch', ops: ops.map((op, i) => ({ opId: `op-${i}`, ...op })) });
-  return { get, post, batch, sheets, context, triggers, mails };
+  return { get, post, batch, sheets, context, triggers, mails, folders };
 }
 
 const debt = { id: 'd-1', cuenta: 'Nina', contacto: 'Juan', tipo: 'favor', descripcion: 'x', fecha: '2026-05-10', mesPago: '2026-06', tasaCambio: 1, monto: 100, saldo: 100, estado: 'pendiente', creadoPor: 'Nina' };
 const payment = { id: 'p-1', fecha: '2026-05-12', deudaId: 'd-1', monto: 30, nota: '', registradoPor: 'Nina' };
 
-describe('Apps Script v7', () => {
+describe('Apps Script v8', () => {
   let env: ReturnType<typeof makeEnv>;
   beforeEach(() => { env = makeEnv(); });
 
@@ -135,7 +160,7 @@ describe('Apps Script v7', () => {
     const res = env.get();
     expect(res).toMatchObject({ ok: true, deudas: [], pagos: [], clientLimits: {} });
     expect(res.version).toBeTruthy();
-    expect([...env.sheets.keys()].sort()).toEqual(['Deudas', 'Historial', 'Limites', 'Pagos', 'Usuarios']);
+    expect([...env.sheets.keys()].sort()).toEqual(['Clientes', 'Deudas', 'Historial', 'Limites', 'Pagos', 'Usuarios']);
   });
 
   it('applies a batch and is idempotent on retry', () => {
@@ -217,12 +242,12 @@ describe('Apps Script v7', () => {
     expect(env.get({ action: 'bcv' })).toMatchObject({ ok: true, rate: 36.5 });
   });
 
-  it('reports apiVersion 7 and the configured users', () => {
+  it('reports apiVersion 8 and the configured users', () => {
     env.batch({ action: 'setUsers', usuarios: ['Nina', 'Nando', 'Ana', 'Nina'] });
     const res = env.get();
-    expect(res.apiVersion).toBe(7);
+    expect(res.apiVersion).toBe(8);
     expect(res.usuarios).toEqual(['Nina', 'Nando', 'Ana']);
-    expect(env.get({ v: res.version })).toMatchObject({ notModified: true, apiVersion: 7 });
+    expect(env.get({ v: res.version })).toMatchObject({ notModified: true, apiVersion: 8 });
   });
 
   it('edits a loan and recomputes the balance from its payments', () => {
@@ -279,5 +304,47 @@ describe('Apps Script v7', () => {
     env.batch({ action: 'addDebt', debt: { ...debt, mesPago: '2099-01' } });
     env.context.enviarRecordatorios();
     expect(env.mails).toHaveLength(0);
+  });
+
+  it('keeps a client list: new loans add their client once', () => {
+    env.batch({ action: 'addDebt', debt }, { action: 'addDebt', debt: { ...debt, id: 'd-2', contacto: ' juan ' } });
+    expect(env.get().clientes).toEqual(['Juan']);
+    env.batch({ action: 'updateDebt', id: 'd-2', changes: { contacto: 'Ana' } });
+    expect(env.get().clientes).toEqual(['Juan', 'Ana']);
+  });
+
+  it('seeds the client list from existing loans when upgrading', () => {
+    env.get(); // creates sheets
+    env.sheets.delete('Clientes');
+    env.sheets.get('Deudas')!.rows.push(['d-7', 'Nina', 'Zoe', 'favor', '', '2026-01-01', 10, 10, 'pendiente', 'Nina', '2026-02', 1]);
+    env.sheets.get('Deudas')!.rows.push(['d-8', 'Nina', 'ana', 'favor', '', '2026-01-01', 10, 10, 'pendiente', 'Nina', '2026-02', 1]);
+    env.sheets.get('Deudas')!.rows.push(['d-9', 'Nina', 'Ana', 'favor', '', '2026-01-01', 10, 10, 'pendiente', 'Nina', '2026-02', 1]);
+    env.batch({ action: 'addDebt', debt: { ...debt, id: 'd-10', contacto: 'Zoe' } });
+    expect(env.get({ fresh: '1' }).clientes).toEqual(['ana', 'Zoe']);
+  });
+
+  it('backs up the sheet to a Drive folder and keeps the last N copies', () => {
+    const on = env.post({ action: 'setupBackup', frequency: 'weekly', keep: 2 });
+    expect(on).toMatchObject({ active: true, frequency: 'weekly', keep: 2 });
+    expect(env.triggers[0]).toMatchObject({ weekDay: 'SUNDAY' });
+    for (let i = 0; i < 3; i++) env.context.respaldoAutomatico();
+    const state = env.post({ action: 'backupNow' });
+    expect(state.folderUrl).toBe('https://drive/folder-1');
+    expect(state.lastUrl).toBe('https://drive/4');
+    expect(env.folders[0].files.filter((f: any) => !f.trashed).map((f: any) => f.created)).toEqual([3, 4]);
+    expect(env.post({ action: 'disableBackup' }).active).toBe(false);
+  });
+
+  it('sends a monthly summary of the previous month', () => {
+    env.batch({ action: 'addDebt', debt: { ...debt, fecha: '2026-09-05', mesPago: '2026-09' } }, { action: 'addPayment', payment: { ...payment, fecha: '2026-09-20' } });
+    const on = env.post({ action: 'setupReminders', emails: ['a@b.co'], hour: 7, daily: false, monthly: true });
+    expect(on).toMatchObject({ active: false, monthly: true });
+    expect(env.triggers[0]).toMatchObject({ monthDay: 1, hour: 7 });
+    const res = env.post({ action: 'testMonthly' });
+    expect(res.sent).toBe(true);
+    const mail = env.mails[env.mails.length - 1];
+    expect(mail.to).toBe('a@b.co');
+    expect(mail.subject).toMatch(/^Preztame: resumen de /);
+    expect(env.post({ action: 'disableReminders' })).toMatchObject({ active: false, monthly: false });
   });
 });

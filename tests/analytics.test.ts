@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { agingBuckets, flowByMonth, lastMonths, outstandingByMonth, pendingByTag, summarize, topDebtors } from '../src/lib/analytics';
+import { agingBuckets, byPaymentMonth, debtorsForMonth, lastMonths, monthsAround, outstandingByMonth, pendingByTag, summarize, topDebtors } from '../src/lib/analytics';
 import { Debt, Payment } from '../src/types';
 
 const today = new Date(2026, 9, 9);
@@ -21,12 +21,6 @@ describe('analytics', () => {
     expect(outstandingByMonth(deudas, pagos, ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10']).map(r => r.saldo))
       .toEqual([20, 0, 100, 60, 110]);
   });
-  it('computes lent vs recovered per month', () => {
-    expect(flowByMonth(deudas, pagos, ['2026-09', '2026-10'])).toEqual([
-      { mes: '2026-09', prestado: 0, cobrado: 40 },
-      { mes: '2026-10', prestado: 50, cobrado: 0 }
-    ]);
-  });
   it('buckets pending balance by age', () => {
     const b = agingBuckets(deudas, today);
     expect(b[0]).toMatchObject({ saldo: 50, count: 1 }); // 7 days
@@ -40,5 +34,18 @@ describe('analytics', () => {
     expect(summarize(deudas, pagos, today)).toMatchObject({
       porCobrar: 110, activos: 2, personas: 2, prestado: 170, recuperado: 60, vencido: 60, venceMes: 50, cobradoMes: 0
     });
+  });
+
+  it('groups by payment month: collected never exceeds what was due', () => {
+    expect(monthsAround(today, 1, 1)).toEqual(['2026-09', '2026-10', '2026-11']);
+    const rows = byPaymentMonth(deudas, ['2026-09', '2026-10']);
+    expect(rows[0]).toMatchObject({ total: 120, cobrado: 60, pendiente: 60, prestamos: 2 });
+    expect(rows[1]).toMatchObject({ total: 50, cobrado: 0, pendiente: 50 });
+  });
+  it('lists who has to pay in a month', () => {
+    const rows = debtorsForMonth(deudas, '2026-09', today);
+    expect(rows).toHaveLength(1); // "Ana" and "ana " are the same person
+    expect(rows[0]).toMatchObject({ name: 'Ana', total: 120, cobrado: 60, pendiente: 60, estado: 'vencido' });
+    expect(debtorsForMonth(deudas, '2026-10', today)[0]).toMatchObject({ name: 'Beto', estado: 'pendiente' });
   });
 });

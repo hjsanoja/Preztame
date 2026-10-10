@@ -36,7 +36,7 @@ export default function InstallBanner({ canInstall, isIos, isStandalone, onInsta
     <div className="m3-card rounded-2xl p-4 mb-6 flex items-start gap-3 animate-fade-in" role="region" aria-label="Instalar la app">
       <img src="./pwa-192.png" alt="" className="h-11 w-11 rounded-xl shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-on-surface">Instala DeudaFlow en tu teléfono</p>
+        <p className="text-sm font-bold text-on-surface">Instala Preztame en tu teléfono</p>
         {canInstall ? (
           <p className="text-xs text-on-surface-variant mt-0.5">Ábrela desde tu pantalla de inicio, a pantalla completa y aunque no tengas conexión.</p>
         ) : (

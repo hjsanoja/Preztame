@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion, PanInfo } from 'motion/react';
-import { Check, ChevronDown, Copy, Download, HandCoins, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, HandCoins, Pencil, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { Debt } from '../types';
 import { downloadBlob, formatMonthName } from '../utils/storage';
 import { getDueStatus } from '../lib/dueStatus';
@@ -15,6 +15,7 @@ interface DebtsListProps {
   onOpenAbono: (id: string) => void;
   onOpenNewDebt: () => void;
   onDeleteDebt: (id: string) => void;
+  onEditDebt?: (id: string) => void;
   onNotify?: (message: string) => void;
 }
 
@@ -66,7 +67,7 @@ function SelectField({ label, value, onChange, children }: {
   );
 }
 
-export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAbono, onOpenNewDebt, onDeleteDebt, onNotify }: DebtsListProps) {
+export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAbono, onOpenNewDebt, onDeleteDebt, onEditDebt, onNotify }: DebtsListProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status>('pendiente');
   const [tag, setTag] = useState<string>('todas');
@@ -130,7 +131,7 @@ export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAb
     const headers = ['ID', 'Cuenta', 'Contacto', 'Etiqueta', 'Concepto', 'Fecha', 'Mes de pago', 'Tasa', 'Monto', 'Saldo', 'Estado', 'Registrado por'];
     const rows = filtered.map(d => [d.id, d.cuenta, esc(d.contacto), esc(tagLabel(d.tipo)), esc(d.descripcion), d.fecha, d.mesPago, d.tasaCambio, d.monto, d.saldo, d.estado, d.creadoPor]);
     const blob = new Blob(['﻿' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')], { type: 'text/csv;charset=utf-8' });
-    downloadBlob(blob, `deudaflow_prestamos_${accountView.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`);
+    downloadBlob(blob, `preztame_prestamos_${accountView.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const copyReminder = async (d: Debt) => {
@@ -252,6 +253,7 @@ export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAb
               onOpen={() => onOpenDetails(d.id)}
               onAbono={() => onOpenAbono(d.id)}
               onDelete={() => onDeleteDebt(d.id)}
+              onEdit={onEditDebt ? () => onEditDebt(d.id) : undefined}
               onCopy={() => copyReminder(d)}
             />
           ))}
@@ -281,10 +283,11 @@ interface DebtCardProps {
   onOpen: () => void;
   onAbono: () => void;
   onDelete: () => void;
+  onEdit?: () => void;
   onCopy: () => void;
 }
 
-function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onCopy }: DebtCardProps) {
+function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onEdit, onCopy }: DebtCardProps) {
   const due = getDueStatus(d, today);
   const pending = d.estado === 'pendiente';
   const paidPct = d.monto > 0 ? ((d.monto - d.saldo) / d.monto) * 100 : 0;
@@ -354,6 +357,11 @@ function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onCopy }:
             Detalle
           </button>
           <span className="flex-1" />
+          {onEdit && (
+            <button type="button" onClick={onEdit} title="Editar préstamo" aria-label="Editar préstamo" className="m3-state h-12 w-12 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
+              <Pencil className="h-5 w-5" />
+            </button>
+          )}
           {pending && (
             <button type="button" onClick={onCopy} title="Copiar recordatorio de cobro" aria-label="Copiar recordatorio de cobro" className="m3-state h-12 w-12 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
               {copied ? <Check className="h-5 w-5 text-success" /> : <Copy className="h-5 w-5" />}
