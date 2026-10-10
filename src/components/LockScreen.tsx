@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Delete, Fingerprint } from 'lucide-react';
+import { Delete, Fingerprint, KeyRound } from 'lucide-react';
 
 interface LockScreenProps {
   hasBiometric: boolean;
   pinLength: number;
   onPin: (pin: string) => Promise<boolean>;
   onBiometric: () => Promise<boolean>;
+  // Forgotten PIN: the Google Sheets access key removes the lock. Returns
+  // false when the key does not match; absent when no key is configured.
+  onRecover?: (key: string) => boolean;
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
 // Full-screen lock: PIN keypad + fingerprint / Face ID button.
-export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric }: LockScreenProps) {
+export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric, onRecover }: LockScreenProps) {
+  const [recovering, setRecovering] = useState(false);
+  const [key, setKey] = useState('');
+  const [keyError, setKeyError] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [fails, setFails] = useState(0);
@@ -57,6 +63,7 @@ export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (recovering) return;
       if (/^\d$/.test(e.key)) press(e.key);
       else if (e.key === 'Backspace') press('del');
 
@@ -74,6 +81,38 @@ export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric
         <p className="text-sm text-on-surface-variant mt-1">{hasBiometric ? 'Usa tu huella o Face ID, o escribe tu PIN.' : 'Escribe tu PIN para continuar.'}</p>
       </div>
 
+      {recovering && !onRecover ? (
+        <div className="w-full max-w-sm space-y-3 text-sm text-on-surface-variant">
+          <p>Este teléfono no está conectado a Google Sheets, así que no hay clave para quitar el bloqueo. La única salida es borrar los datos de Preztame en este navegador (Ajustes del navegador → Sitios → Preztame → Borrar datos) y volver a abrir la app.</p>
+          <div className="flex justify-end">
+            <button type="button" onClick={() => setRecovering(false)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold cursor-pointer">Volver</button>
+          </div>
+        </div>
+      ) : recovering ? (
+        <form
+          className="w-full max-w-sm space-y-3"
+          onSubmit={e => {
+            e.preventDefault();
+            if (onRecover?.(key.trim())) return;
+            setKeyError('Esa no es la clave de acceso de esta hoja.');
+          }}
+        >
+          <p className="text-sm text-on-surface-variant">
+            Escribe tu <strong>clave de acceso</strong> de Google Sheets para quitar el bloqueo. La encuentras en tu Apps Script (Extensiones → Apps Script), en la línea <code className="font-mono text-xs">var API_TOKEN = "…"</code>, o en Ajustes de otro teléfono conectado.
+          </p>
+          <input
+            type="text" autoComplete="off" spellCheck={false} autoFocus aria-label="Clave de acceso"
+            value={key} onChange={e => { setKey(e.target.value); setKeyError(''); }}
+            className="w-full h-12 px-4 rounded-xl border border-outline-variant bg-surface-lowest font-mono text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+          <p role="alert" className="text-sm text-error min-h-5">{keyError}</p>
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => { setRecovering(false); setKey(''); setKeyError(''); }} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold cursor-pointer">Volver</button>
+            <button type="submit" disabled={!key.trim()} className="m3-state h-10 px-6 rounded-full bg-primary text-on-primary text-sm font-semibold cursor-pointer disabled:opacity-40">Quitar bloqueo</button>
+          </div>
+        </form>
+      ) : (
+      <>
       <div className="flex gap-3 h-4" aria-label={`${pin.length} dígitos escritos`}>
         {Array.from({ length: pinLength }, (_, i) => (
           <span key={i} className={`h-3.5 w-3.5 rounded-full ${i < pin.length ? 'bg-primary' : 'border-2 border-outline'}`} />
@@ -103,6 +142,12 @@ export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric
           className="m3-state h-12 px-6 rounded-full bg-primary-container text-on-primary-container font-semibold inline-flex items-center gap-2 cursor-pointer">
           <Fingerprint className="h-5 w-5" /> Usar huella o Face ID
         </button>
+      )}
+
+      <button type="button" onClick={() => setRecovering(true)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
+        <KeyRound className="h-4 w-4" /> ¿Olvidaste tu PIN?
+      </button>
+      </>
       )}
     </div>
   );

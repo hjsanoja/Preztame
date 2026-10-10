@@ -83,7 +83,7 @@ export function getLocalModeData(): LedgerData {
   const clientes = readJson<string[]>("df_local_clientes") || [];
   if (deudas && pagos) return normalizeLedger({ deudas, pagos, clientLimits, usuarios, clientes });
 
-  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {}, usuarios: [], clientes: [] };
+  const seeded: LedgerData = { deudas: MOCK_DEBTS, pagos: MOCK_PAYMENTS, clientLimits: {}, usuarios: [], clientes: [], telefonos: {} };
   saveLocalModeData(seeded);
   return seeded;
 }

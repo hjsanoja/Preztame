@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Fingerprint, Lock, ShieldCheck } from 'lucide-react';
-import { biometricAvailable, checkPin, isValidPin, LockSettings } from '../lib/appLock';
+import { Faq } from './SettingsCard';
+import { biometricAvailable, checkPin, isValidPin, LockSettings } from '../../lib/appLock';
 
 interface SecuritySettingsProps {
   settings: LockSettings;
@@ -133,6 +134,20 @@ export default function SecuritySettings({ settings, userName, setPin, disable, 
         </div>
       )}
       <p className="text-xs text-on-surface-variant">Es una protección de este teléfono. Tus datos en Google Sheets siguen protegidos por la clave de acceso.</p>
+      <div className="space-y-2">
+        <Faq q="¿Qué hago si olvido el PIN?">
+          <ol className="list-decimal pl-5 space-y-1.5">
+            <li>En la pantalla de bloqueo toca <strong>¿Olvidaste tu PIN?</strong></li>
+            <li>Escribe tu <strong>clave de acceso</strong> de Google Sheets y toca <strong>Quitar bloqueo</strong>.</li>
+            <li>Vuelve aquí y crea un PIN nuevo (y activa otra vez la huella si la usabas).</li>
+          </ol>
+          <p><strong>¿Dónde está la clave?</strong> En tu Google Sheet: Extensiones → Apps Script, en la línea <code className="font-mono text-xs">var API_TOKEN = "…"</code>. También aparece en Ajustes → "Dónde se guardan tus datos" de cualquier teléfono conectado. Te conviene guardarla en un lugar seguro.</p>
+          <p>Si usas el modo de prueba local (sin Google Sheets), la única salida es borrar los datos de Preztame en el navegador.</p>
+        </Faq>
+        <Faq q="¿Y si cambio de teléfono o se daña la huella?">
+          <p>El PIN y la huella son solo de este teléfono. En un teléfono nuevo abre tu link de autoconfiguración y activa el bloqueo otra vez. Tus préstamos están en Google Sheets y no se pierden.</p>
+        </Faq>
+      </div>
     </div>
   );
 }

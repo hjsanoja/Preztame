@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, newId, OpMeta, QueuedOp, V7_ACTIONS } from '../lib/ledger';
+import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, minApiFor, newId, OpMeta, QueuedOp } from '../lib/ledger';
 import { describeSheetsError, fetchSnapshot, pushOps, SheetsConfig, SheetsError, SheetsErrorCode } from '../lib/sheetsApi';
 import {
   getLocalModeData,
@@ -247,7 +247,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
   // ---------------- API pública ----------------
 
   // Applies a change and queues it for Google Sheets. Returns false when the
-  // connected Apps Script is too old for this kind of change (needs v7).
+  // connected Apps Script is too old for this kind of change.
   const dispatch = useCallback((op: LedgerOp, meta: OpMeta = {}): boolean => {
     if (mode === 'local') {
       const next = applyOp(baseRef.current, op);
@@ -259,7 +259,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
       }
       return true;
     }
-    if (V7_ACTIONS.includes(op.action) && apiVersionRef.current !== null && apiVersionRef.current < 7) return false;
+    if (apiVersionRef.current !== null && apiVersionRef.current < minApiFor(op.action)) return false;
     const queued: QueuedOp = { ...op, ...meta, opId: newId('op'), queuedAt: Date.now() };
     commitOutbox([...outboxRef.current, queued]);
     if (cfgRef.current.url && cfgRef.current.token) void sync({ skipRefresh: true });
@@ -301,6 +301,9 @@ export function refIdOf(op: LedgerOp): string {
     case 'updateDebt': return op.id;
     case 'setClientLimit': return op.contacto;
     case 'setUsers': return op.usuarios.join(', ');
-    case 'renameUser': return op.from;
+    case 'renameUser':
+    case 'renameClient': return op.from;
+    case 'setClient':
+    case 'deleteClient': return op.nombre;
   }
 }

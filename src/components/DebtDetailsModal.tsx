@@ -1,10 +1,10 @@
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Avatar, AccountChip, DueChip, TagChip } from './ui';
 import { getDueStatus } from '../lib/dueStatus';
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
-import { X, Calendar, DollarSign, ArrowDownLeft, FileText, Trash2, Clipboard, Pencil, UserRound } from 'lucide-react';
+import { X, ArrowDownLeft, CircleCheck, FileText, Trash2, Pencil, UserRound } from 'lucide-react';
 import { formatUsd, formatVes } from '../lib/format';
 
 interface DebtDetailsModalProps {
@@ -18,6 +18,8 @@ interface DebtDetailsModalProps {
   activeUser: string;
   onEdit?: (deudaId: string) => void;
   onOpenPerson?: (contacto: string) => void;
+  /** One-tap "paid in full": the parent registers an abono for the full balance (with undo). */
+  onMarkPaid?: (id: string) => void;
 }
 
 export default function DebtDetailsModal({
@@ -30,7 +32,8 @@ export default function DebtDetailsModal({
   onDeletePayment,
   activeUser,
   onEdit,
-  onOpenPerson
+  onOpenPerson,
+  onMarkPaid
 }: DebtDetailsModalProps) {
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
 
@@ -69,144 +72,151 @@ export default function DebtDetailsModal({
   const displayTasa = debt.tasaCambio || 1;
   const isConverted = displayTasa !== 1;
 
+  const isPending = debt.estado === 'pendiente';
+  const canMarkPaid = isPending && debt.saldo > 0 && !!onMarkPaid;
+
   return (
     <div className="fixed inset-0 bg-scrim/40 flex items-end sm:items-center justify-center z-50 sm:p-4 animate-fade-in" onClick={onClose}>
-      <div 
+      <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="detail-title"
-        className="bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] max-w-2xl w-full p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 m3-elevation-3 flex flex-col max-h-[92dvh] animate-sheet-in"
+        className="bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] max-w-2xl w-full m3-elevation-3 flex flex-col max-h-[92dvh] animate-sheet-in"
         onClick={(e) => e.stopPropagation()}
       >
-        
-        {/* Modal Header */}
-        <div className="sm:hidden mx-auto -mt-2 mb-3 h-1 w-8 rounded-full bg-outline shrink-0" aria-hidden="true" />
-        <div className="flex justify-between items-start gap-3 pb-4 border-b border-outline-variant shrink-0">
-          <div className="flex items-start gap-3 min-w-0">
-            <Avatar name={debt.contacto} size="lg" />
-            <div className="min-w-0">
-              <h3 id="detail-title" className="text-2xl font-semibold leading-tight truncate">{debt.contacto}</h3>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <AccountChip cuenta={debt.cuenta} />
-                <DueChip status={getDueStatus(debt)} />
-                <TagChip tag={debt.tipo} />
-              </div>
+        <div className="sm:hidden mx-auto mt-3 h-1 w-8 rounded-full bg-outline shrink-0" aria-hidden="true" />
+        <header className="flex items-start gap-3 px-6 pt-4 pb-3 shrink-0">
+          <Avatar name={debt.contacto} size="lg" />
+          <div className="flex-1 min-w-0">
+            <h3 id="detail-title" className="text-2xl font-semibold leading-tight truncate">{debt.contacto}</h3>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <AccountChip cuenta={debt.cuenta} />
+              <DueChip status={getDueStatus(debt)} />
+              <TagChip tag={debt.tipo} />
             </div>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={onClose}
             aria-label="Cerrar"
             className="m3-state h-12 w-12 -mr-3 flex items-center justify-center text-on-surface-variant rounded-full cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        {/* Modal Scrollable Content */}
-        <div className="overflow-y-auto py-5 flex-grow space-y-6 scrollbar-thin">
-          
-          {/* Quick Metrics display */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-surface-low p-4 rounded-xl border border-outline-variant/80">
-            <div>
-              <span className="block text-[11px] uppercase font-bold text-outline">Monto Original</span>
-              <span className="text-base font-bold text-on-surface tabular-nums">{formatValue(debt.monto)}</span>
+        <div className="overflow-y-auto px-6 pb-5 flex-grow space-y-5 scrollbar-thin">
+          <dl className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="rounded-2xl bg-surface-container p-3">
+              <dt className="text-xs text-on-surface-variant">Monto original</dt>
+              <dd className="text-lg font-bold tabular-nums">{formatValue(debt.monto)}</dd>
             </div>
-            <div>
-              <span className="block text-[11px] uppercase font-bold text-outline">Saldo Exigible</span>
-              <span className={`text-base font-bold tabular-nums ${debt.saldo > 0 ? 'text-error' : 'text-on-surface-variant'}`}>
-                {formatValue(debt.saldo)}
-              </span>
+            <div className="rounded-2xl bg-surface-container p-3">
+              <dt className="text-xs text-on-surface-variant">Saldo exigible</dt>
+              <dd className={`text-lg font-bold tabular-nums ${debt.saldo > 0 ? 'text-error' : 'text-on-surface-variant'}`}>{formatValue(debt.saldo)}</dd>
             </div>
-            <div>
-              <span className="block text-[11px] uppercase font-bold text-outline font-sans">Mes de Pago</span>
-              <span className="text-sm font-semibold text-on-surface">{formatMonthName(debt.mesPago)}</span>
+            <div className="rounded-2xl bg-surface-container p-3">
+              <dt className="text-xs text-on-surface-variant">Mes de pago</dt>
+              <dd className="text-base font-semibold">{formatMonthName(debt.mesPago)}</dd>
             </div>
-            <div>
-              <span className="block text-[11px] uppercase font-bold text-outline tabular-nums">Tasa de Cambio</span>
-              <span className="text-sm font-semibold tabular-nums text-on-surface">{displayTasa.toFixed(2)}</span>
+            <div className="rounded-2xl bg-surface-container p-3">
+              <dt className="text-xs text-on-surface-variant">Tasa de cambio</dt>
+              <dd className="text-base font-semibold tabular-nums">{displayTasa.toFixed(2)}</dd>
             </div>
-          </div>
+          </dl>
 
-          {/* Rate Conversions display panel */}
           {isConverted && (
-            <div className="bg-success-container/70 border border-success/80 rounded-xl p-3.5 text-xs text-on-surface flex flex-col sm:flex-row justify-between gap-2.5 font-medium">
+            <div className="rounded-2xl bg-success-container text-on-success-container p-4 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <span className="font-bold text-on-success-container uppercase text-[11px] block mb-0.5 tabular-nums">Conversiones con Tasa {displayTasa.toFixed(2)}</span>
-                Valor convertido a moneda secundaria (VES / Bolívares):
+                <span className="block font-semibold tabular-nums">Conversiones con tasa {displayTasa.toFixed(2)}</span>
+                <span className="text-xs">Valor convertido a moneda secundaria (VES / Bolívares):</span>
               </div>
-              <div className="flex space-x-4">
-                <span>Original: <strong className="text-on-surface font-bold tabular-nums">{formatVES(debt.monto * displayTasa)}</strong></span>
-                <span>Pendiente: <strong className="text-error font-bold tabular-nums">{formatVES(debt.saldo * displayTasa)}</strong></span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span>Original: <strong className="font-bold tabular-nums">{formatVES(debt.monto * displayTasa)}</strong></span>
+                <span>Pendiente: <strong className="font-bold tabular-nums">{formatVES(debt.saldo * displayTasa)}</strong></span>
               </div>
             </div>
           )}
 
-          {/* Extended description card */}
-          <div className="space-y-2">
-            <span className="block text-xs font-bold text-outline uppercase tracking-wider">Concepto de la operación</span>
-            <div className="text-xs text-on-surface-variant bg-surface-low/50 p-4 rounded-xl border border-outline-variant/80 flex items-start space-x-2">
-              <FileText className="h-4 w-4 text-outline mt-0.5 shrink-0" />
-              <div className="leading-relaxed">
-                <p className="font-medium text-on-surface">{debt.descripcion || "Sin descripción / anotado como préstamo directo."}</p>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[11px] text-outline font-medium">
-                  <span>Fecha Registro: {formatDateLabel(debt.fecha)}</span>
+          <section>
+            <h4 className="text-base font-semibold mb-2">Concepto de la operación</h4>
+            <div className="rounded-2xl border border-outline-variant p-4 flex items-start gap-3">
+              <FileText className="h-5 w-5 text-on-surface-variant mt-0.5 shrink-0" aria-hidden="true" />
+              <div className="min-w-0">
+                <p className="text-sm text-on-surface">{debt.descripcion || "Sin descripción / anotado como préstamo directo."}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-on-surface-variant">
+                  <span>Fecha registro: {formatDateLabel(debt.fecha)}</span>
                   <span>Registrado por: {debt.creadoPor}</span>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* Payments listing area */}
-          <div className="space-y-3.5">
-            <div className="flex justify-between items-center">
-              <span className="block text-xs font-bold text-outline uppercase tracking-wider">Historial de Abonos Recibidos</span>
-              {debt.estado === 'pendiente' && (
-                <button
-                  onClick={() => onOpenAbono(debt.id)}
-                  className="bg-success hover:bg-success text-on-success font-bold text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5 cursor-pointer shadow-sm shadow-shadow/20 active:scale-95 duration-150"
-                >
-                  <ArrowDownLeft className="h-4 w-4" />
-                  <span>Abonar Capital</span>
-                </button>
+          <section>
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
+              <h4 className="text-base font-semibold">Historial de abonos recibidos</h4>
+              {isPending && (
+                <div className="flex flex-wrap gap-2">
+                  {canMarkPaid && (
+                    <button
+                      type="button"
+                      onClick={() => onMarkPaid!(debt.id)}
+                      className="m3-state h-10 px-4 rounded-full bg-secondary-container text-on-secondary-container text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                    >
+                      <CircleCheck className="h-4 w-4" aria-hidden="true" />
+                      Marcar como pagado
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onOpenAbono(debt.id)}
+                    className="m3-state h-10 px-4 rounded-full bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <ArrowDownLeft className="h-4 w-4" aria-hidden="true" />
+                    Abonar capital
+                  </button>
+                </div>
               )}
             </div>
 
-            <div className="border border-outline-variant/80 rounded-xl overflow-hidden shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                <thead className="bg-surface-low border-b border-outline-variant/80 text-[11px] font-bold text-on-surface-variant uppercase tracking-wider tabular-nums">
+            <div className="rounded-2xl border border-outline-variant overflow-x-auto">
+              <table className="w-full text-left border-collapse text-sm">
+                <thead className="border-b border-outline-variant text-xs font-medium text-on-surface-variant">
                   <tr>
-                    <th className="py-2.5 px-4">Fecha Pago</th>
-                    <th className="py-2.5 px-4">Monto Recibido</th>
-                    <th className="py-2.5 px-4">Nota / Detalle</th>
-                    <th className="py-2.5 px-4">Recibió</th>
-                    <th className="py-2.5 px-4 text-right">Anular</th>
+                    <th className="py-2.5 px-4 font-medium">Fecha pago</th>
+                    <th className="py-2.5 px-4 font-medium">Monto recibido</th>
+                    <th className="py-2.5 px-4 font-medium">Nota / detalle</th>
+                    <th className="py-2.5 px-4 font-medium">Recibió</th>
+                    <th className="py-2.5 px-4 font-medium text-right">Anular</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-outline-variant text-on-surface bg-surface-lowest">
+                <tbody className="divide-y divide-outline-variant/60 text-on-surface">
                   {assocPayments.length > 0 ? (
                     assocPayments.map(p => (
-                      <tr key={p.id} className="hover:bg-surface-low/60 transition duration-150">
-                        <td className="py-2.5 px-4 tabular-nums text-on-surface-variant">
+                      <tr key={p.id}>
+                        <td className="py-2 px-4 tabular-nums text-on-surface-variant whitespace-nowrap">
                           {formatDateLabel(p.fecha)}
                         </td>
-                        <td className="py-2.5 px-4 font-bold text-success tabular-nums">
-                          + {formatUsd(p.monto)}
+                        <td className="py-2 px-4 font-semibold text-success tabular-nums whitespace-nowrap">
+                          +{formatUsd(p.monto)}
                           {p.moneda === 'VES' && p.montoBs ? (
-                            <span className="block text-[11px] font-medium text-on-surface-variant">{formatVes(p.montoBs)} · tasa {p.tasaCambio}</span>
+                            <span className="block text-xs font-normal text-on-surface-variant">{formatVes(p.montoBs)} · tasa {p.tasaCambio}</span>
                           ) : null}
                         </td>
-                        <td className="py-2.5 px-4 text-on-surface-variant max-w-[150px] truncate" title={p.nota}>
+                        <td className="py-2 px-4 text-on-surface-variant max-w-[150px] truncate" title={p.nota}>
                           {p.nota || '-'}
                         </td>
-                        <td className="py-2.5 px-4 text-on-surface-variant font-semibold">
+                        <td className="py-2 px-4 text-on-surface-variant">
                           {p.registradoPor}
                         </td>
-                        <td className="py-2.5 px-4 text-right">
+                        <td className="py-1 px-2 text-right">
                           <button
+                            type="button"
                             onClick={() => onDeletePayment(p.id)}
-                            className="text-outline hover:text-error p-1 rounded-full hover:bg-error-container transition cursor-pointer"
+                            className="m3-state h-10 w-10 inline-flex items-center justify-center rounded-full text-on-surface-variant hover:text-error cursor-pointer"
                             title="Eliminar este abono de capital"
+                            aria-label="Eliminar este abono de capital"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -215,7 +225,7 @@ export default function DebtDetailsModal({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="py-5 text-center text-outline font-medium text-xs">
+                      <td colSpan={5} className="py-6 text-center text-sm text-on-surface-variant">
                         No hay abonos registrados para este préstamo.
                       </td>
                     </tr>
@@ -223,31 +233,29 @@ export default function DebtDetailsModal({
                 </tbody>
               </table>
             </div>
-          </div>
-
+          </section>
         </div>
 
-        {/* Modal Footer actions */}
-        <div className="pt-3.5 border-t border-outline-variant flex flex-wrap items-center gap-2 shrink-0">
+        <div className="px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:pb-4 border-t border-outline-variant flex flex-wrap items-center gap-2 shrink-0">
           {onEdit && (
-            <button type="button" onClick={() => onEdit(debt.id)} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+            <button type="button" onClick={() => onEdit(debt.id)} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
               <Pencil className="h-4 w-4" /> Editar
             </button>
           )}
           {onOpenPerson && (
-            <button type="button" onClick={() => onOpenPerson(debt.contacto)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+            <button type="button" onClick={() => onOpenPerson(debt.contacto)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
               <UserRound className="h-4 w-4" /> Ficha de {debt.contacto.split(' ')[0]}
             </button>
           )}
           <span className="flex-1" />
-          <button 
+          <button
+            type="button"
             onClick={onClose}
-            className="m3-state h-10 px-5 rounded-full text-primary text-sm font-semibold cursor-pointer"
+            className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold cursor-pointer"
           >
             Cerrar
           </button>
         </div>
-
       </div>
     </div>
   );

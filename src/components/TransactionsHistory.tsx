@@ -1,8 +1,10 @@
-import { AccountChip } from './ui';
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { ArrowDownLeft, ArrowUpRight, Search, Trash2, Undo2, X } from 'lucide-react';
 import { Debt, Payment } from '../types';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
-import { Undo2, PlusCircle, ArrowUpRight, ArrowDownLeft, Receipt, Trash2, Search, Filter, BookOpen, DollarSign } from 'lucide-react';
+import { formatUsd, formatVes } from '../lib/format';
+import { addMoney, subMoney } from '../lib/money';
+import { AccountChip, FilterChip } from './ui';
 
 interface TransactionsHistoryProps {
   deudas: Debt[];
@@ -10,382 +12,185 @@ interface TransactionsHistoryProps {
   accountView: string;
   onDeleteDebt: (id: string) => void;
   onDeletePayment: (id: string) => void;
+  onOpenDebt?: (id: string) => void;
 }
 
-interface CombinedTransaction {
+interface Movement {
   type: 'deuda' | 'pago';
   id: string;
+  debtId: string;
   fecha: string;
   cuenta: string;
   contacto: string;
-  concepto: string;
+  nota: string;
   monto: number;
+  montoBs?: number;
   registradoPor: string;
 }
 
-export default function TransactionsHistory({
-  deudas,
-  pagos,
-  accountView,
-  onDeleteDebt,
-  onDeletePayment
-}: TransactionsHistoryProps) {
+type TypeFilter = 'todos' | 'deuda' | 'pago';
+const TYPE_CHIPS: [TypeFilter, string][] = [['todos', 'Todos'], ['deuda', 'Préstamos'], ['pago', 'Abonos']];
 
+const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// "Movimientos": every loan handed out and every abono received, newest
+// first and grouped by month.
+export default function TransactionsHistory({ deudas, pagos, accountView, onDeleteDebt, onDeletePayment, onOpenDebt }: TransactionsHistoryProps) {
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'deuda' | 'pago'>('todos');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('todos');
 
-  const formatValue = (num: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-      minimumFractionDigits: 0
-    }).format(num);
-  };
-
-  // Compile full chronologically combined transaction records
-  const unifiedTransactions = useMemo(() => {
-    const list: CombinedTransaction[] = [];
-
-    // 1. Add debts as disbursements/outflows
+  const movements = useMemo(() => {
+    const byId = new Map(deudas.map(d => [d.id, d]));
+    const visible = (cuenta: string) => accountView === 'Ambos' || cuenta === accountView;
+    const list: Movement[] = [];
     deudas.forEach(d => {
-      // Filter by accountView
-      if (accountView !== 'Ambos' && d.cuenta !== accountView) return;
-
+      if (!visible(d.cuenta)) return;
       list.push({
-        type: 'deuda',
-        id: d.id,
-        fecha: d.fecha,
-        cuenta: d.cuenta,
-        contacto: d.contacto,
-        concepto: `Desembolso préstamo (Mes: ${formatMonthName(d.mesPago)}). Nota: ${d.descripcion || 'Sin concepto'}`,
-        monto: d.monto,
-        registradoPor: d.creadoPor || "Desconocido"
+        type: 'deuda', id: d.id, debtId: d.id, fecha: d.fecha, cuenta: d.cuenta, contacto: d.contacto,
+        nota: [d.descripcion, `pago en ${formatMonthName(d.mesPago)}`].filter(Boolean).join(' · '),
+        monto: d.monto, registradoPor: d.creadoPor
       });
     });
-
-    // 2. Add payments as recovery receipts/inflows
     pagos.forEach(p => {
-      const parent = deudas.find(d => d.id === p.deudaId);
-      if (!parent) return;
-
-      // Filter by accountView
-      if (accountView !== 'Ambos' && parent.cuenta !== accountView) return;
-
+      const parent = byId.get(p.deudaId);
+      if (!parent || !visible(parent.cuenta)) return;
       list.push({
-        type: 'pago',
-        id: p.id,
-        fecha: p.fecha,
-        cuenta: parent.cuenta,
-        contacto: parent.contacto,
-        concepto: `Abono de capital recibido. Nota: ${p.nota || 'Sin nota de abono'}`,
-        monto: p.monto,
-        registradoPor: p.registradoPor || "Desconocido"
+        type: 'pago', id: p.id, debtId: parent.id, fecha: p.fecha, cuenta: parent.cuenta, contacto: parent.contacto,
+        nota: p.nota || parent.descripcion, monto: p.monto, montoBs: p.moneda === 'VES' ? p.montoBs : undefined,
+        registradoPor: p.registradoPor
       });
     });
-
-    // Sort descending by date, secondary by ID
-    list.sort((a, b) => {
-      const dateDiff = new Date(b.fecha).getTime() - new Date(a.fecha).getTime();
-      if (dateDiff !== 0) return dateDiff;
-      return b.id.localeCompare(a.id);
-    });
-
-    return list;
+    return list.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id.localeCompare(a.id));
   }, [deudas, pagos, accountView]);
 
-  // Apply search and type filters
-  const filteredTransactions = useMemo(() => {
-    return unifiedTransactions.filter(t => {
-      // Filter by transaction type
-      if (typeFilter !== 'todos' && t.type !== typeFilter) return false;
+  const filtered = useMemo(() => {
+    const q = fold(search.trim());
+    return movements.filter(m =>
+      (typeFilter === 'todos' || m.type === typeFilter) &&
+      (!q || fold(`${m.contacto} ${m.nota} ${m.registradoPor}`).includes(q))
+    );
+  }, [movements, search, typeFilter]);
 
-      // Filter by text search (name, concept, operator)
-      if (search.trim() !== '') {
-        const query = search.toLowerCase();
-        const matchesContact = t.contacto.toLowerCase().includes(query);
-        const matchesConcept = t.concepto.toLowerCase().includes(query);
-        const matchesOperator = t.registradoPor.toLowerCase().includes(query);
-        return matchesContact || matchesConcept || matchesOperator;
-      }
-
-      return true;
-    });
-  }, [unifiedTransactions, search, typeFilter]);
-
-  // Dynamic calculations on filtered list
-  const auditTotals = useMemo(() => {
+  const totals = useMemo(() => {
     let prestado = 0;
     let cobrado = 0;
-    filteredTransactions.forEach(t => {
-      if (t.type === 'deuda') {
-        prestado += t.monto;
-      } else {
-        cobrado += t.monto;
-      }
+    filtered.forEach(m => { if (m.type === 'deuda') prestado = addMoney(prestado, m.monto); else cobrado = addMoney(cobrado, m.monto); });
+    return { prestado, cobrado, neto: subMoney(cobrado, prestado) };
+  }, [filtered]);
+
+  const groups = useMemo(() => {
+    const out: { mes: string; items: Movement[] }[] = [];
+    filtered.forEach(m => {
+      const mes = m.fecha.slice(0, 7);
+      if (out[out.length - 1]?.mes !== mes) out.push({ mes, items: [] });
+      out[out.length - 1].items.push(m);
     });
-    return {
-      prestado,
-      cobrado,
-      neto: cobrado - prestado
-    };
-  }, [filteredTransactions]);
+    return out;
+  }, [filtered]);
 
-  const handleDeleteTransaction = (t: CombinedTransaction) => {
-    const isDeuda = t.type === 'deuda';
-    const confirmMessage = isDeuda 
-      ? `¿Estás seguro de que deseas eliminar este préstamo original por ${formatValue(t.monto)} a favor de ${t.contacto}?\n\n¡ADVERTENCIA! Se borrarán también todos los abonos o pagos asociados de forma permanente.`
-      : `¿Deseas anular y descontar este abono de capital por ${formatValue(t.monto)} recibido de ${t.contacto}?`;
-
-    if (window.confirm(confirmMessage)) {
-      if (isDeuda) {
-        onDeleteDebt(t.id);
-      } else {
-        onDeletePayment(t.id);
-      }
-    }
-  };
+  const anyFilter = search.trim() !== '' || typeFilter !== 'todos';
+  const clear = () => { setSearch(''); setTypeFilter('todos'); };
 
   return (
-    <div className="space-y-6">
-      
-      {/* Header Info Banner */}
-      <div className="m3-card rounded-2xl p-5 shadow-xs">
-        <h4 className="font-bold text-on-surface text-lg">Historial de Movimientos</h4>
-        <p className="text-xs text-on-surface-variant mt-1">
-          Auditoría de todos los desembolsos de capital y cobros realizados. Los cambios realizados se sincronizan en tiempo real.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <label className="relative block">
+        <span className="sr-only">Buscar movimientos</span>
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-on-surface-variant" aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar por cliente, nota o quién registró"
+          className="w-full h-14 pl-12 pr-4 rounded-full bg-surface-high text-on-surface placeholder:text-on-surface-variant text-base focus:outline-none focus:ring-2 focus:ring-primary"
+        />
+      </label>
 
-      {/* Dynamic Filter & Search Toolbar */}
-      <div className="m3-card rounded-2xl p-4 shadow-xs space-y-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Text Search input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-outline" />
-            <input 
-              type="text"
-              placeholder="Buscar por cliente, nota o registrado por..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-outline-variant/80 rounded-full focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition"
-            />
-          </div>
-
-          {/* Type Filter Select */}
-          <div className="flex items-center space-x-2">
-            <Filter className="h-4 w-4 text-outline" />
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="text-xs font-bold tabular-nums text-on-primary-container bg-surface-low border border-outline-variant rounded-full py-2 px-3.5 focus:outline-none cursor-pointer min-w-[150px]"
-            >
-              <option value="todos">Todos los Flujos</option>
-              <option value="deuda">💸 Préstamos (Salidas)</option>
-              <option value="pago">📈 Abonos (Entradas)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Audit mini totals badge */}
-        <div className="bg-surface-low/80 border border-outline-variant/60 rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-on-surface-variant justify-between items-center">
-          <div className="flex flex-wrap gap-x-6 gap-y-1">
-            <span>Capital Prestado: <strong className="text-error font-bold tabular-nums">{formatValue(auditTotals.prestado)}</strong></span>
-            <span>Capital Recuperado: <strong className="text-success font-bold tabular-nums">{formatValue(auditTotals.cobrado)}</strong></span>
-            <span>Balance de Caja: <strong className={`tabular-nums font-bold ${auditTotals.neto >= 0 ? 'text-success' : 'text-error'}`}>{auditTotals.neto >= 0 ? '+' : ''}{formatValue(auditTotals.neto)}</strong></span>
-          </div>
-
-          {(search !== '' || typeFilter !== 'todos') && (
-            <button 
-              onClick={() => { setSearch(''); setTypeFilter('todos'); }}
-              className="text-[11px] text-primary hover:underline font-semibold uppercase tracking-wider bg-surface-lowest border border-outline-variant px-2.5 py-0.5 rounded-full shadow-2xs"
-            >
-              Limpiar búsqueda
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* MOBILE TIMELINE CARDS (Visible on small screens only) */}
-      <div className="block md:hidden space-y-4">
-        {filteredTransactions.length > 0 ? (
-          filteredTransactions.map(t => {
-            const isDeuda = t.type === 'deuda';
-            return (
-              <div 
-                key={`${t.type}-${t.id}`}
-                id={`mobile-trans-${t.type}-${t.id}`}
-                className="bg-surface-lowest border border-outline-variant rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-primary/25"
-              >
-                {/* Visual Status Accent Indicator */}
-                <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${isDeuda ? 'bg-error' : 'bg-success'}`} />
-                
-                {/* Header Information */}
-                <div className="pl-2 flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-1.5">
-                    {isDeuda ? (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-error-container text-error border border-error/40 uppercase tracking-widest">
-                        Préstamo
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-success-container text-success border border-success-container/40 uppercase tracking-widest">
-                        Abono
-                      </span>
-                    )}
-
-                    <AccountChip cuenta={t.cuenta} />
-                  </div>
-
-                  <span className="text-[11px] text-outline tabular-nums">
-                    {formatDateLabel(t.fecha)}
-                  </span>
-                </div>
-
-                {/* Content details */}
-                <div className="pl-2 my-2.5">
-                  <h5 className="font-semibold text-on-surface text-sm">{t.contacto}</h5>
-                  <p className="text-[11px] text-on-surface-variant font-normal mt-1 leading-relaxed">
-                    {t.concepto}
-                  </p>
-                </div>
-
-                {/* Footer and Money flow */}
-                <div className="pl-2 pt-3 border-t border-outline-variant flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] text-on-surface-variant uppercase tracking-wider font-semibold block">Registrado por</span>
-                    <span className="text-xs font-bold text-on-surface-variant">{t.registradoPor}</span>
-                  </div>
-
-                  <div className="flex items-center space-x-3">
-                    <span className={`text-base font-bold tabular-nums ${isDeuda ? 'text-error' : 'text-success'}`}>
-                      {isDeuda ? '-' : '+'}{formatValue(t.monto)}
-                    </span>
-
-                    <button
-                      onClick={() => handleDeleteTransaction(t)}
-                      className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container border border-outline-variant rounded-lg transition-all active:scale-95"
-                      title={isDeuda ? "Eliminar este préstamo" : "Deshacer este abono"}
-                    >
-                      {isDeuda ? <Trash2 className="h-4 w-4" /> : <Undo2 className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            );
-          })
-        ) : (
-          <div className="bg-surface-lowest border border-outline-variant rounded-2xl p-8 text-center text-on-surface-variant text-xs font-semibold">
-            No se encontraron movimientos registrados con los filtros aplicados.
-          </div>
+      <div className="flex gap-2 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 [scrollbar-width:none]">
+        {TYPE_CHIPS.map(([value, label]) => (
+          <FilterChip key={value} selected={typeFilter === value} onClick={() => setTypeFilter(value)}>{label}</FilterChip>
+        ))}
+        {anyFilter && (
+          <button type="button" onClick={clear} className="m3-state h-8 px-3 rounded-lg text-sm font-semibold text-primary inline-flex items-center gap-1 whitespace-nowrap cursor-pointer">
+            <X className="h-4 w-4" /> Limpiar
+          </button>
         )}
       </div>
 
-      {/* DESKTOP TABLE VIEW (Hidden on mobile) */}
-      <div className="hidden md:block bg-surface-lowest border border-outline-variant rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[850px]">
-            <thead className="bg-surface-container border-b border-outline-variant text-xs font-semibold text-on-surface-variant uppercase tracking-wider">
-              <tr>
-                <th className="py-4 px-6">Fecha</th>
-                <th className="py-4 px-6">Cuenta</th>
-                <th className="py-4 px-6">Tipo Flujo</th>
-                <th className="py-4 px-6">Cliente</th>
-                <th className="py-4 px-6">Concepto / Nota</th>
-                <th className="py-4 px-6">Importe</th>
-                <th className="py-4 px-6">Confirmado por</th>
-                <th className="py-4 px-6 text-center">Deshacer</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm divide-y divide-outline-variant">
-              {filteredTransactions.length > 0 ? (
-                filteredTransactions.map(t => {
-                  const isDeuda = t.type === 'deuda';
-                  return (
-                    <tr 
-                      key={`${t.type}-${t.id}`}
-                      className="hover:bg-surface-low/50 transition-colors duration-150 text-on-surface"
-                    >
-                      {/* Date */}
-                      <td className="py-4 px-6 tabular-nums font-medium text-on-surface-variant">
-                        {formatDateLabel(t.fecha)}
-                      </td>
-
-                      {/* Account indicator Badge */}
-                      <td className="py-4 px-6">
-                        <AccountChip cuenta={t.cuenta} />
-                      </td>
-
-                      {/* Movement Flow Category badge */}
-                      <td className="py-4 px-6">
-                        {isDeuda ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-error-container text-error border border-error/40 uppercase">
-                            <ArrowUpRight className="h-3 w-3 mr-1" />
-                            Prestado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-success-container/20 text-success border border-success-container uppercase">
-                            <ArrowDownLeft className="h-3 w-3 mr-1" />
-                            Cobrado
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Debtor client */}
-                      <td className="py-4 px-6 font-bold text-on-surface">
-                        {t.contacto}
-                      </td>
-
-                      {/* Description notes */}
-                      <td 
-                        className="py-4 px-6 text-on-surface-variant max-w-xs truncate" 
-                        title={t.concepto}
-                      >
-                        {t.concepto}
-                      </td>
-
-                      {/* Flow value */}
-                      <td className="py-4 px-6 font-semibold">
-                        {isDeuda ? (
-                          <span className="text-error font-semibold">
-                            - {formatValue(t.monto)}
-                          </span>
-                        ) : (
-                          <span className="text-success font-semibold">
-                            + {formatValue(t.monto)}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Operator Name */}
-                      <td className="py-4 px-6 font-medium text-on-surface-variant">
-                        {t.registradoPor}
-                      </td>
-
-                      {/* Undo Trigger Button */}
-                      <td className="py-4 px-6 text-center">
-                        <button
-                          onClick={() => handleDeleteTransaction(t)}
-                          className="text-outline hover:text-error p-1.5 rounded-lg border border-outline-variant hover:bg-error-container transition cursor-pointer"
-                          title={isDeuda ? "Eliminar este préstamo" : "Deshacer este abono"}
-                        >
-                          {isDeuda ? <Trash2 className="h-4 w-4" /> : <Undo2 className="h-4 w-4" />}
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
-              ) : (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center text-outline">
-                    No se han encontrado movimientos para la búsqueda indicada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-surface-container p-3 text-center">
+        <div>
+          <p className="text-xs text-on-surface-variant">Prestado</p>
+          <p className="text-base sm:text-lg font-bold tabular-nums">{formatUsd(totals.prestado)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-on-surface-variant">Cobrado</p>
+          <p className="text-base sm:text-lg font-bold tabular-nums text-success">{formatUsd(totals.cobrado)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-on-surface-variant">Balance</p>
+          <p className={`text-base sm:text-lg font-bold tabular-nums ${totals.neto < 0 ? 'text-error' : 'text-success'}`}>
+            {totals.neto > 0 ? '+' : ''}{formatUsd(totals.neto)}
+          </p>
         </div>
       </div>
+      <p className="text-sm text-on-surface-variant px-1" aria-live="polite">
+        {filtered.length} movimiento{filtered.length === 1 ? '' : 's'}
+      </p>
+
+      {groups.length === 0 ? (
+        <div className="m3-card rounded-3xl p-8 text-center text-sm text-on-surface-variant">
+          {anyFilter ? 'Ningún movimiento coincide con la búsqueda.' : 'Todavía no hay movimientos.'}
+        </div>
+      ) : groups.map(g => (
+        <section key={g.mes} aria-label={formatMonthName(g.mes)} className="space-y-2">
+          <h3 className="text-sm font-semibold text-on-surface-variant px-1 capitalize">{formatMonthName(g.mes)}</h3>
+          <ul className="m3-card rounded-3xl divide-y divide-outline-variant/60 overflow-hidden">
+            {g.items.map(m => {
+              const isLoan = m.type === 'deuda';
+              return (
+                <li key={`${m.type}-${m.id}`} className="flex items-center gap-3 pl-4 pr-2 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onOpenDebt?.(m.debtId)}
+                    disabled={!onOpenDebt}
+                    className="m3-state flex-1 min-w-0 flex items-center gap-3 text-left rounded-2xl -my-1 -ml-2 p-2 cursor-pointer disabled:cursor-default"
+                  >
+                    <span className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isLoan ? 'bg-surface-highest text-on-surface' : 'bg-success-container text-on-success-container'}`} aria-hidden="true">
+                      {isLoan ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownLeft className="h-5 w-5" />}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="font-semibold truncate">{m.contacto}</span>
+                        <AccountChip cuenta={m.cuenta} />
+                      </span>
+                      <span className="block text-xs text-on-surface-variant truncate">
+                        {isLoan ? 'Préstamo' : 'Abono'}{m.nota ? ` · ${m.nota}` : ''}
+                      </span>
+                      <span className="block text-xs text-on-surface-variant">
+                        {formatDateLabel(m.fecha)}{m.registradoPor ? ` · ${m.registradoPor}` : ''}
+                      </span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className={`block font-bold tabular-nums ${isLoan ? 'text-on-surface' : 'text-success'}`}>
+                        {isLoan ? '−' : '+'}{formatUsd(m.monto)}
+                      </span>
+                      {m.montoBs ? <span className="block text-xs text-on-surface-variant tabular-nums">{formatVes(m.montoBs)}</span> : null}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => (isLoan ? onDeleteDebt(m.id) : onDeletePayment(m.id))}
+                    aria-label={isLoan ? `Eliminar el préstamo de ${m.contacto}` : `Anular el abono de ${m.contacto}`}
+                    title={isLoan ? 'Eliminar préstamo' : 'Anular abono'}
+                    className="m3-state h-10 w-10 shrink-0 rounded-full flex items-center justify-center text-on-surface-variant hover:text-error cursor-pointer"
+                  >
+                    {isLoan ? <Trash2 className="h-4 w-4" /> : <Undo2 className="h-4 w-4" />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }

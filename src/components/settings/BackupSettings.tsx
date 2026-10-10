@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DatabaseBackup, ExternalLink, Loader2 } from 'lucide-react';
-import { BackupSettings as Backup, describeSheetsError, SheetsError, updateBackup } from '../lib/sheetsApi';
+import { BackupSettings as Backup, describeSheetsError, SheetsError, updateBackup } from '../../lib/sheetsApi';
 
 interface BackupSettingsProps {
   mode: 'local' | 'sheets';

@@ -84,24 +84,33 @@ export default function StatementSheet({ person: p, preparedBy, onClose, onNotif
         onClick={e => e.stopPropagation()}
         className="df-print-container w-full sm:max-w-3xl max-h-[94dvh] flex flex-col bg-surface-low text-on-surface rounded-t-[28px] sm:rounded-[28px] m3-elevation-3 animate-sheet-in"
       >
-        <header className="df-no-print flex flex-wrap items-center gap-2 px-5 pt-4 pb-3 border-b border-outline-variant/60">
-          <h2 id="statement-title" className="text-xl font-semibold flex-1 min-w-40">Estado de cuenta</h2>
-          <label className="inline-flex items-center gap-2 text-sm text-on-surface-variant cursor-pointer select-none">
-            <input type="checkbox" checked={includeSettled} onChange={e => setIncludeSettled(e.target.checked)} className="h-4 w-4 accent-[var(--md-primary)]" />
-            Incluir saldados
-          </label>
-          <button type="button" onClick={printPdf} className="m3-state h-10 px-4 rounded-full bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
-            <FileDown className="h-4 w-4" /> Guardar PDF
-          </button>
-          <button type="button" onClick={shareImage} disabled={busy} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />} Compartir imagen
-          </button>
-          <button type="button" onClick={onClose} aria-label="Cerrar" className="m3-state h-12 w-12 rounded-full flex items-center justify-center text-on-surface-variant cursor-pointer">
-            <X className="h-5 w-5" />
-          </button>
+        <div className="df-no-print sm:hidden mx-auto mt-3 h-1 w-8 rounded-full bg-outline shrink-0" aria-hidden="true" />
+        <header className="df-no-print px-6 pt-4 pb-3 shrink-0">
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <h2 id="statement-title" className="text-2xl font-semibold leading-tight">Estado de cuenta</h2>
+              <p className="mt-1 text-sm text-on-surface-variant truncate">{p.name}</p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Cerrar" className="m3-state h-12 w-12 -mr-3 rounded-full flex items-center justify-center text-on-surface-variant cursor-pointer">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={printPdf} className="m3-state h-10 px-4 rounded-full bg-primary text-on-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer">
+              <FileDown className="h-4 w-4" /> Guardar PDF
+            </button>
+            <button type="button" onClick={shareImage} disabled={busy} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-default">
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />} Compartir imagen
+            </button>
+            <span className="flex-1" />
+            <label className="m3-state h-10 px-3 rounded-full inline-flex items-center gap-2 text-sm text-on-surface-variant cursor-pointer select-none">
+              <input type="checkbox" checked={includeSettled} onChange={e => setIncludeSettled(e.target.checked)} className="h-4 w-4 accent-[var(--md-primary)]" />
+              Incluir saldados
+            </label>
+          </div>
         </header>
 
-        <div className="df-print-container overflow-auto p-3 sm:p-5 bg-surface-container">
+        <div className="df-print-container overflow-auto mx-3 mb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:mx-4 sm:mb-4 p-3 sm:p-4 rounded-[20px] bg-surface-container">
           {/* The document itself (fixed light palette) */}
           <div ref={docRef} className="df-print-area mx-auto w-[720px] max-w-none bg-white text-[#1b1c1f] p-8 rounded-xl text-[13px] leading-snug" style={{ fontFamily: 'Inter, Roboto, system-ui, sans-serif' }}>
             <div className="flex items-start justify-between gap-4 pb-4 border-b-2 border-[#0b57d0]">
@@ -139,7 +148,7 @@ export default function StatementSheet({ person: p, preparedBy, onClose, onNotif
               ))}
             </div>
 
-            <h3 className="mt-6 mb-1 text-[12px] font-bold uppercase tracking-wider text-[#44474e]">Préstamos</h3>
+            <h3 className="mt-6 mb-1 text-[13px] font-semibold text-[#44474e]">Préstamos</h3>
             <table className="w-full border-collapse tabular-nums">
               <thead>
                 <tr className="text-left text-[11px] text-[#44474e] border-b border-[#c4c7cf]">
@@ -164,7 +173,7 @@ export default function StatementSheet({ person: p, preparedBy, onClose, onNotif
 
             {payments.length > 0 && (
               <>
-                <h3 className="mt-6 mb-1 text-[12px] font-bold uppercase tracking-wider text-[#44474e]">Abonos recibidos</h3>
+                <h3 className="mt-6 mb-1 text-[13px] font-semibold text-[#44474e]">Abonos recibidos</h3>
                 <table className="w-full border-collapse tabular-nums">
                   <thead>
                     <tr className="text-left text-[11px] text-[#44474e] border-b border-[#c4c7cf]">

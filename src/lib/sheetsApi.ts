@@ -119,7 +119,9 @@ export function normalizeLedger(raw: any): LedgerData {
     pagos: (Array.isArray(raw?.pagos) ? raw.pagos : []).filter((p: any) => p && p.id !== '' && p.id != null).map(normalizePayment),
     clientLimits: normalizeLimits(raw?.clientLimits),
     usuarios: (Array.isArray(raw?.usuarios) ? raw.usuarios : []).map((u: unknown) => String(u ?? '').trim()).filter(Boolean),
-    clientes: (Array.isArray(raw?.clientes) ? raw.clientes : []).map((c: unknown) => String(c ?? '').trim()).filter(Boolean)
+    clientes: (Array.isArray(raw?.clientes) ? raw.clientes : []).map((c: unknown) => String(c ?? '').trim()).filter(Boolean),
+    telefonos: Object.fromEntries(Object.entries(raw?.telefonos && typeof raw.telefonos === 'object' ? raw.telefonos : {})
+      .map(([k, v]) => [k.trim(), String(v ?? '').trim()]).filter(([k, v]) => k && v))
   };
 }
 

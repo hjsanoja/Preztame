@@ -9,6 +9,8 @@ export interface LedgerData {
   usuarios: string[];
   // Client list ("Clientes" sheet). New names are added automatically.
   clientes: string[];
+  // Phone of each client (for WhatsApp), keyed by the name in the list.
+  telefonos: Record<string, string>;
 }
 
 export type DebtChanges = Partial<Pick<Debt, 'cuenta' | 'contacto' | 'tipo' | 'descripcion' | 'fecha' | 'mesPago' | 'tasaCambio' | 'monto'>>;
@@ -21,7 +23,10 @@ export type LedgerOp =
   | { action: 'setClientLimit'; contacto: string; limite: number }
   | { action: 'updateDebt'; id: string; changes: DebtChanges }
   | { action: 'setUsers'; usuarios: string[] }
-  | { action: 'renameUser'; from: string; to: string };
+  | { action: 'renameUser'; from: string; to: string }
+  | { action: 'setClient'; nombre: string; telefono: string }
+  | { action: 'renameClient'; from: string; to: string }
+  | { action: 'deleteClient'; nombre: string };
 
 // What the change log records with every operation.
 export interface OpMeta {
@@ -31,12 +36,22 @@ export interface OpMeta {
 
 export type QueuedOp = LedgerOp & OpMeta & { opId: string; queuedAt: number };
 
-// Operations that need Apps Script v7.
-export const V7_ACTIONS: LedgerOp['action'][] = ['updateDebt', 'setUsers', 'renameUser'];
+// The Apps Script version each newer operation needs.
+const MIN_API: Partial<Record<LedgerOp['action'], number>> = {
+  updateDebt: 7, setUsers: 7, renameUser: 7,
+  setClient: 9, renameClient: 9, deleteClient: 9
+};
+export const minApiFor = (action: LedgerOp['action']) => MIN_API[action] ?? 0;
 
-export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [], clientes: [] };
+export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [], clientes: [], telefonos: {} };
 
-const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+export const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Drops every key matching a name (any casing) from a name-keyed record.
+const without = <T,>(rec: Record<string, T>, name: string): Record<string, T> =>
+  Object.fromEntries(Object.entries(rec).filter(([k]) => !sameName(k, name)));
+const lookup = <T,>(rec: Record<string, T>, name: string): T | undefined =>
+  Object.entries(rec).find(([k]) => sameName(k, name))?.[1];
 
 // Adds a client name to the list unless it is already there (any casing).
 export function withClient(clientes: string[], name: string): string[] {
@@ -142,8 +157,54 @@ export function applyOp(data: LedgerData, op: LedgerOp): LedgerData {
         pagos: data.pagos.map(p => (p.registradoPor === from ? { ...p, registradoPor: to } : p))
       };
     }
+
+    case 'setClient': {
+      const nombre = op.nombre.trim();
+      if (!nombre) return data;
+      const clientes = withClient(data.clientes, nombre);
+      const key = clientes.find(c => sameName(c, nombre))!;
+      const tel = op.telefono.trim();
+      const telefonos = without(data.telefonos, nombre);
+      if (tel) telefonos[key] = tel;
+      return { ...data, clientes, telefonos };
+    }
+
+    case 'renameClient': {
+      // Renames a client everywhere; when the new name already exists both
+      // become one: its loans (and their payments) move to the new name, and
+      // the new name keeps its own limit and phone, or takes the old ones.
+      const from = op.from.trim();
+      const to = op.to.trim();
+      if (!from || !to || from === to) return data;
+      const limit = lookup(data.clientLimits, to) ?? lookup(data.clientLimits, from);
+      const tel = lookup(data.telefonos, to) || lookup(data.telefonos, from);
+      const clientLimits = without(without(data.clientLimits, from), to);
+      if (limit) clientLimits[to] = limit;
+      const telefonos = without(without(data.telefonos, from), to);
+      if (tel) telefonos[to] = tel;
+      const kept = data.clientes.filter(c => !sameName(c, from) && !sameName(c, to));
+      return {
+        ...data,
+        deudas: data.deudas.map(d => (sameName(d.contacto, from) ? { ...d, contacto: to } : d)),
+        clientes: [...kept, to],
+        clientLimits,
+        telefonos
+      };
+    }
+
+    case 'deleteClient': {
+      return {
+        ...data,
+        clientes: data.clientes.filter(c => !sameName(c, op.nombre)),
+        clientLimits: without(data.clientLimits, op.nombre),
+        telefonos: without(data.telefonos, op.nombre)
+      };
+    }
   }
 }
+
+export const phoneOf = (data: LedgerData, name: string) => lookup(data.telefonos, name) ?? '';
+export const limitOf = (data: LedgerData, name: string) => lookup(data.clientLimits, name) ?? 0;
 
 // The accounts to show: the configured list, or (until one is configured)
 // the original two plus anyone else who appears in the data.

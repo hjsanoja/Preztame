@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { motion, PanInfo } from 'motion/react';
-import { Check, ChevronDown, Copy, Download, HandCoins, Pencil, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Check, ChevronDown, CircleCheck, Copy, Download, HandCoins, MessageCircle, Pencil, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { Debt } from '../types';
 import { downloadBlob, formatMonthName } from '../utils/storage';
 import { getDueStatus } from '../lib/dueStatus';
 import { formatUsd, formatVes } from '../lib/format';
+import { whatsappUrl } from '../lib/phone';
 import { normalizeTag, tagColorVar, tagLabel, tagOptions } from '../lib/tags';
-import { AccountChip, Avatar, DueChip, ProgressBar, TagChip } from './ui';
+import { AccountChip, Avatar, DueChip, FilterChip, ProgressBar, TagChip } from './ui';
 
 interface DebtsListProps {
   deudas: Debt[];
@@ -16,6 +17,8 @@ interface DebtsListProps {
   onOpenNewDebt: () => void;
   onDeleteDebt: (id: string) => void;
   onEditDebt?: (id: string) => void;
+  onMarkPaid?: (id: string) => void;
+  phoneOf?: (name: string) => string;
   onNotify?: (message: string) => void;
 }
 
@@ -31,23 +34,6 @@ const SORT_LABEL: Record<SortKey, string> = {
 
 const STATUS_CHIPS: [Status, string][] = [['pendiente', 'Pendientes'], ['saldado', 'Saldados'], ['todos', 'Todos']];
 
-function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`m3-state h-8 px-3 rounded-lg text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer border ${
-        selected
-          ? 'bg-secondary-container text-on-secondary-container border-transparent'
-          : 'border-outline-variant text-on-surface-variant'
-      }`}
-    >
-      {selected && <Check className="h-4 w-4" aria-hidden="true" />}
-      {children}
-    </button>
-  );
-}
 
 function SelectField({ label, value, onChange, children }: {
   label: string; value: string; onChange: (v: string) => void; children: React.ReactNode;
@@ -67,7 +53,7 @@ function SelectField({ label, value, onChange, children }: {
   );
 }
 
-export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAbono, onOpenNewDebt, onDeleteDebt, onEditDebt, onNotify }: DebtsListProps) {
+export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAbono, onOpenNewDebt, onDeleteDebt, onEditDebt, onMarkPaid, phoneOf, onNotify }: DebtsListProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<Status>('pendiente');
   const [tag, setTag] = useState<string>('todas');
@@ -136,6 +122,9 @@ export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAb
 
   const copyReminder = async (d: Debt) => {
     const text = `Hola ${d.contacto}, te escribo para recordarte el saldo pendiente de ${formatUsd(d.saldo)} (pago de ${formatMonthName(d.mesPago)}) del préstamo de ${formatUsd(d.monto)}. ¡Gracias!`;
+    // With the client's phone saved, open the WhatsApp chat directly.
+    const wa = whatsappUrl(phoneOf?.(d.contacto) ?? '', text);
+    if (wa) { window.open(wa, '_blank', 'noopener'); return; }
     try {
       await navigator.clipboard.writeText(text);
       setCopiedId(d.id);
@@ -255,6 +244,8 @@ export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAb
               onDelete={() => onDeleteDebt(d.id)}
               onEdit={onEditDebt ? () => onEditDebt(d.id) : undefined}
               onCopy={() => copyReminder(d)}
+              hasPhone={!!phoneOf?.(d.contacto)}
+              onMarkPaid={onMarkPaid ? () => onMarkPaid(d.id) : undefined}
             />
           ))}
         </ul>
@@ -285,9 +276,11 @@ interface DebtCardProps {
   onDelete: () => void;
   onEdit?: () => void;
   onCopy: () => void;
+  hasPhone: boolean;
+  onMarkPaid?: () => void;
 }
 
-function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onEdit, onCopy }: DebtCardProps) {
+function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onEdit, onCopy, hasPhone, onMarkPaid }: DebtCardProps) {
   const due = getDueStatus(d, today);
   const pending = d.estado === 'pendiente';
   const paidPct = d.monto > 0 ? ((d.monto - d.saldo) / d.monto) * 100 : 0;
@@ -349,25 +342,34 @@ function DebtCard({ debt: d, today, copied, onOpen, onAbono, onDelete, onEdit, o
 
         <div className="flex items-center gap-1 pt-2 border-t border-outline-variant/60 mt-auto">
           {pending && (
-            <button type="button" onClick={onAbono} className="m3-state h-10 px-4 rounded-full bg-secondary-container text-on-secondary-container text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+            <button type="button" onClick={onAbono} className="m3-state h-10 px-3 rounded-full bg-secondary-container text-on-secondary-container text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
               <HandCoins className="h-4 w-4" /> Abonar
             </button>
           )}
-          <button type="button" onClick={onOpen} className="m3-state h-10 px-3 rounded-full text-primary text-sm font-semibold cursor-pointer">
-            Detalle
-          </button>
+          {pending && onMarkPaid ? (
+            <button type="button" onClick={onMarkPaid} title="Registrar el pago completo del saldo" className="m3-state h-10 px-3 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+              <CircleCheck className="h-4 w-4" /> Pagado
+            </button>
+          ) : (
+            <button type="button" onClick={onOpen} className="m3-state h-10 px-3 rounded-full text-primary text-sm font-semibold cursor-pointer">
+              Detalle
+            </button>
+          )}
           <span className="flex-1" />
           {onEdit && (
-            <button type="button" onClick={onEdit} title="Editar préstamo" aria-label="Editar préstamo" className="m3-state h-12 w-12 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
+            <button type="button" onClick={onEdit} title="Editar préstamo" aria-label="Editar préstamo" className="m3-state h-11 w-11 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
               <Pencil className="h-5 w-5" />
             </button>
           )}
           {pending && (
-            <button type="button" onClick={onCopy} title="Copiar recordatorio de cobro" aria-label="Copiar recordatorio de cobro" className="m3-state h-12 w-12 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
-              {copied ? <Check className="h-5 w-5 text-success" /> : <Copy className="h-5 w-5" />}
+            <button type="button" onClick={onCopy}
+              title={hasPhone ? 'Enviar recordatorio por WhatsApp' : 'Copiar recordatorio de cobro'}
+              aria-label={hasPhone ? 'Enviar recordatorio por WhatsApp' : 'Copiar recordatorio de cobro'}
+              className="m3-state h-11 w-11 rounded-full text-on-surface-variant flex items-center justify-center cursor-pointer">
+              {copied ? <Check className="h-5 w-5 text-success" /> : hasPhone ? <MessageCircle className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
             </button>
           )}
-          <button type="button" onClick={onDelete} title="Eliminar préstamo" aria-label="Eliminar préstamo" className="m3-state h-12 w-12 rounded-full text-on-surface-variant hover:text-error flex items-center justify-center cursor-pointer">
+          <button type="button" onClick={onDelete} title="Eliminar préstamo" aria-label="Eliminar préstamo" className="m3-state h-11 w-11 rounded-full text-on-surface-variant hover:text-error flex items-center justify-center cursor-pointer">
             <Trash2 className="h-5 w-5" />
           </button>
         </div>

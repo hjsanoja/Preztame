@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BellRing, Loader2, Mail } from 'lucide-react';
-import { NotifyState } from '../hooks/useDueNotifications';
-import { describeSheetsError, ReminderSettings, SheetsError, updateReminders } from '../lib/sheetsApi';
+import { NotifyState } from '../../hooks/useDueNotifications';
+import { describeSheetsError, ReminderSettings, SheetsError, updateReminders } from '../../lib/sheetsApi';
 
 interface RemindersSettingsProps {
   mode: 'local' | 'sheets';
