@@ -1,4 +1,4 @@
-import { Debt, Payment } from '../types';
+import { ChangeLogEntry, Debt, Payment } from '../types';
 import { LedgerData, QueuedOp } from './ledger';
 import { roundMoney } from './money';
 
@@ -26,7 +26,7 @@ export function describeSheetsError(code: SheetsErrorCode): string {
     case 'not-configured': return 'Falta configurar la URL o la clave de Google Sheets.';
     case 'unauthorized': return 'La clave de la app no coincide con la del Apps Script. Usa "Diagnosticar conexión" en Ajustes.';
     case 'no-key': return 'El Apps Script no tiene clave. Copia el código desde Ajustes (ya trae tu clave) y publica una nueva versión.';
-    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v6 desde Ajustes.';
+    case 'outdated-script': return 'Tu Apps Script está desactualizado. Copia el código v7 desde Ajustes.';
     case 'busy': return 'Google Sheets está ocupado. Se reintentará en unos segundos.';
     case 'timeout': return 'Google Sheets tardó demasiado en responder.';
     case 'network': return 'Sin conexión con Google Sheets.';
@@ -70,7 +70,7 @@ export function normalizeDebt(raw: any): Debt {
   const saldo = roundMoney(num(raw.saldo, monto));
   return {
     id: String(raw.id),
-    cuenta: raw.cuenta === 'Nando' ? 'Nando' : 'Nina',
+    cuenta: String(raw.cuenta || 'Nina').trim() || 'Nina',
     contacto: String(raw.contacto || 'Desconocido').trim(),
     tipo: String(raw.tipo || 'favor'),
     descripcion: String(raw.descripcion ?? ''),
@@ -85,7 +85,7 @@ export function normalizeDebt(raw: any): Debt {
 }
 
 export function normalizePayment(raw: any): Payment {
-  return {
+  const payment: Payment = {
     id: String(raw.id),
     fecha: normalizeDate(raw.fecha, 'day'),
     deudaId: String(raw.deudaId),
@@ -93,6 +93,13 @@ export function normalizePayment(raw: any): Payment {
     nota: String(raw.nota ?? ''),
     registradoPor: String(raw.registradoPor || 'Nina')
   };
+  // Payments received in bolívares keep the amount in Bs and that day's rate.
+  if (raw.moneda === 'VES' && num(raw.montoBs) > 0) {
+    payment.moneda = 'VES';
+    payment.montoBs = roundMoney(num(raw.montoBs));
+    payment.tasaCambio = num(raw.tasaCambio);
+  }
+  return payment;
 }
 
 export function normalizeLimits(raw: unknown): Record<string, number> {
@@ -110,9 +117,13 @@ export function normalizeLedger(raw: any): LedgerData {
   return {
     deudas: (Array.isArray(raw?.deudas) ? raw.deudas : []).filter((d: any) => d && d.id !== '' && d.id != null).map(normalizeDebt),
     pagos: (Array.isArray(raw?.pagos) ? raw.pagos : []).filter((p: any) => p && p.id !== '' && p.id != null).map(normalizePayment),
-    clientLimits: normalizeLimits(raw?.clientLimits)
+    clientLimits: normalizeLimits(raw?.clientLimits),
+    usuarios: (Array.isArray(raw?.usuarios) ? raw.usuarios : []).map((u: unknown) => String(u ?? '').trim()).filter(Boolean)
   };
 }
+
+// Apps Script version: v7 sends apiVersion; v6 only a data version; v5 neither.
+const apiVersionOf = (json: any): number => (json?.apiVersion ? Number(json.apiVersion) : json?.version ? 6 : 5);
 
 // ---------------------------------------------------------------------------
 // Transporte
@@ -164,8 +175,8 @@ function assertConfigured(cfg: SheetsConfig) {
 }
 
 export type SnapshotResult =
-  | { kind: 'notModified'; version: string }
-  | { kind: 'data'; data: LedgerData; version: string | null };
+  | { kind: 'notModified'; version: string; apiVersion: number }
+  | { kind: 'data'; data: LedgerData; version: string | null; apiVersion: number };
 
 // Lee los datos. Si `knownVersion` coincide con la del servidor, el script
 // responde solo {notModified} sin tocar la hoja.
@@ -177,15 +188,16 @@ export async function fetchSnapshot(cfg: SheetsConfig, knownVersion: string | nu
     fresh: opts.fresh ? '1' : undefined
   });
   const json = await request(url, { method: 'GET' }, 15000);
-  if (json?.notModified) return { kind: 'notModified', version: String(json.version) };
+  if (json?.notModified) return { kind: 'notModified', version: String(json.version), apiVersion: apiVersionOf(json) };
   if (!json || !Array.isArray(json.deudas)) throw new SheetsError('bad-response');
-  return { kind: 'data', data: normalizeLedger(json), version: json.version ? String(json.version) : null };
+  return { kind: 'data', data: normalizeLedger(json), version: json.version ? String(json.version) : null, apiVersion: apiVersionOf(json) };
 }
 
 export interface PushResult {
   results: { opId: string | null; ok: boolean; error?: string }[];
   versionBefore: string | null;
   version: string | null;
+  apiVersion: number;
 }
 
 // Envía todas las operaciones pendientes en una sola petición.
@@ -203,8 +215,45 @@ export async function pushOps(cfg: SheetsConfig, ops: QueuedOp[]): Promise<PushR
   return {
     results: json.results,
     versionBefore: json.versionBefore ? String(json.versionBefore) : null,
-    version: json.version ? String(json.version) : null
+    version: json.version ? String(json.version) : null,
+    apiVersion: apiVersionOf(json)
   };
+}
+
+// Change log ("Historial de cambios"), newest first. Needs Apps Script v7.
+export async function fetchChangeLog(cfg: SheetsConfig, limit = 200): Promise<ChangeLogEntry[]> {
+  assertConfigured(cfg);
+  const json = await request(withParams(cfg.url, { token: cfg.token, action: 'log', limit: String(limit) }), { method: 'GET' }, 15000);
+  if (!Array.isArray(json?.log)) throw new SheetsError('outdated-script');
+  return json.log.map((e: any) => ({
+    fecha: String(e.fecha ?? ''),
+    usuario: String(e.usuario ?? ''),
+    accion: String(e.accion ?? ''),
+    refId: String(e.refId ?? ''),
+    detalle: String(e.detalle ?? '')
+  }));
+}
+
+export interface ReminderSettings {
+  active: boolean;
+  emails: string[];
+  hour: number;
+}
+
+// Daily e-mail reminders sent by the Apps Script (works on any phone).
+export async function updateReminders(
+  cfg: SheetsConfig,
+  action: 'getReminders' | 'setupReminders' | 'disableReminders' | 'testReminder',
+  settings?: { emails: string[]; hour: number }
+): Promise<ReminderSettings & { sent?: boolean }> {
+  assertConfigured(cfg);
+  const json = await request(cfg.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action, token: cfg.token, ...settings })
+  }, 30000);
+  if (!json || typeof json.active !== 'boolean') throw new SheetsError('outdated-script');
+  return { active: json.active, emails: json.emails || [], hour: Number(json.hour ?? 8), sent: json.sent };
 }
 
 export async function fetchBcvFromScript(cfg: SheetsConfig): Promise<number | null> {

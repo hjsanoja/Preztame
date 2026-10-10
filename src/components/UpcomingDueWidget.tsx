@@ -1,3 +1,4 @@
+import { AccountChip } from './ui';
 import React, { useMemo } from 'react';
 import { Debt } from '../types';
 import { formatMonthName } from '../utils/storage';
@@ -81,11 +82,7 @@ export default function UpcomingDueWidget({ deudas, onOpenDetails }: UpcomingDue
                         <span className="font-semibold text-xs text-on-surface group-hover:text-primary transition">
                           {debt.contacto}
                         </span>
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                          debt.cuenta === 'Nina' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-warning text-on-warning'
-                        }`}>
-                          {debt.cuenta}
-                        </span>
+                        <AccountChip cuenta={debt.cuenta} />
                       </div>
 
                       <p className="text-[11px] text-on-surface-variant font-medium line-clamp-1 mt-0.5">

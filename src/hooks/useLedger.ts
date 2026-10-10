@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, newId, QueuedOp } from '../lib/ledger';
+import { applyOp, applyOps, EMPTY_LEDGER, LedgerData, LedgerOp, newId, OpMeta, QueuedOp, V7_ACTIONS } from '../lib/ledger';
 import { describeSheetsError, fetchSnapshot, pushOps, SheetsConfig, SheetsError, SheetsErrorCode } from '../lib/sheetsApi';
 import {
   getLocalModeData,
   getOutbox,
   getSheetsCache,
+  appendLocalLog,
   saveLocalModeData,
   saveOutbox,
   saveSheetsCache
@@ -37,6 +38,9 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
   const [errorCode, setErrorCode] = useState<SheetsErrorCode | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  // Apps Script version (null = not known yet). Local mode supports everything.
+  const [apiVersion, setApiVersion] = useState<number | null>(null);
+  const apiVersionRef = useRef<number | null>(null);
 
   // Refs para el código asíncrono (evitan closures con datos viejos).
   const baseRef = useRef(base);
@@ -54,12 +58,18 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
 
   const data = useMemo(() => applyOps(base, outbox), [base, outbox]);
 
+  const noteApiVersion = useCallback((v: number | null | undefined) => {
+    if (v == null) return;
+    apiVersionRef.current = v;
+    setApiVersion(v);
+  }, []);
+
   const commitBase = useCallback((next: LedgerData, version: string | null) => {
     baseRef.current = next;
     versionRef.current = version;
     setBase(next);
     if (cfgRef.current.url) {
-      saveSheetsCache(cfgRef.current.url, { data: next, version, syncedAt: Date.now() });
+      saveSheetsCache(cfgRef.current.url, { data: next, version, syncedAt: Date.now(), apiVersion: apiVersionRef.current ?? undefined });
     }
   }, []);
 
@@ -95,6 +105,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
     const cfg = cfgRef.current;
     const res = await pushOps(cfg, batch);
     if (cfgRef.current !== cfg) return false; // la configuración cambió mientras tanto
+    noteApiVersion(res.apiVersion);
     const answered = new Map(res.results.filter(r => r.opId).map(r => [r.opId as string, r]));
     if (answered.size === 0) throw new SheetsError('bad-response', 'El script no confirmó ninguna operación');
     const applied = batch.filter(op => answered.get(op.opId)?.ok);
@@ -110,17 +121,18 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
       callbacksRef.current.onOpsRejected?.(rejected.length, answered.get(rejected[0].opId)?.error || 'error');
     }
     return someoneElseWrote;
-  }, [commitBase, commitOutbox]);
+  }, [commitBase, commitOutbox, noteApiVersion]);
 
   const refreshInner = useCallback(async (fresh = false) => {
     const cfg = cfgRef.current;
     const snap = await fetchSnapshot(cfg, fresh ? null : versionRef.current, { fresh });
     if (cfgRef.current !== cfg) return;
+    noteApiVersion(snap.apiVersion);
     if (snap.kind === 'data') commitBase(snap.data, snap.version);
     else if (cfgRef.current.url) {
-      saveSheetsCache(cfgRef.current.url, { data: baseRef.current, version: snap.version, syncedAt: Date.now() });
+      saveSheetsCache(cfgRef.current.url, { data: baseRef.current, version: snap.version, syncedAt: Date.now(), apiVersion: snap.apiVersion });
     }
-  }, [commitBase]);
+  }, [commitBase, noteApiVersion]);
 
   const scheduleRetry = useCallback((run: () => void) => {
     clearRetry();
@@ -187,6 +199,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
       setOutbox([]);
       setStatus('local');
       setHasLoaded(true);
+      noteApiVersion(7);
       return;
     }
 
@@ -200,6 +213,8 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
     setOutbox(pending);
     setHasLoaded(!!cached);
     setLastSyncedAt(cached?.syncedAt ?? null);
+    apiVersionRef.current = cached?.apiVersion ?? null;
+    setApiVersion(apiVersionRef.current);
 
     if (!url || !token) {
       reportError(new SheetsError('not-configured'));
@@ -209,7 +224,7 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
 
     // 2. En segundo plano: enviar pendientes y traer cambios.
     void sync();
-  }, [mode, url, token, sync, reportError]);
+  }, [mode, url, token, sync, reportError, noteApiVersion]);
 
   // Reintentar al recuperar conexión y refrescar al volver a la app.
   useEffect(() => {
@@ -231,17 +246,24 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
 
   // ---------------- API pública ----------------
 
-  const dispatch = useCallback((op: LedgerOp) => {
+  // Applies a change and queues it for Google Sheets. Returns false when the
+  // connected Apps Script is too old for this kind of change (needs v7).
+  const dispatch = useCallback((op: LedgerOp, meta: OpMeta = {}): boolean => {
     if (mode === 'local') {
       const next = applyOp(baseRef.current, op);
       baseRef.current = next;
       setBase(next);
       saveLocalModeData(next);
-      return;
+      if (meta.desc) {
+        appendLocalLog({ fecha: new Date().toISOString(), usuario: meta.by || '', accion: op.action, refId: refIdOf(op), detalle: meta.desc });
+      }
+      return true;
     }
-    const queued: QueuedOp = { ...op, opId: newId('op'), queuedAt: Date.now() };
+    if (V7_ACTIONS.includes(op.action) && apiVersionRef.current !== null && apiVersionRef.current < 7) return false;
+    const queued: QueuedOp = { ...op, ...meta, opId: newId('op'), queuedAt: Date.now() };
     commitOutbox([...outboxRef.current, queued]);
     if (cfgRef.current.url && cfgRef.current.token) void sync({ skipRefresh: true });
+    return true;
   }, [mode, commitOutbox, sync]);
 
   // Reemplaza todos los datos (solo modo local: importar respaldo).
@@ -261,8 +283,24 @@ export function useLedger({ mode, url, token, onSyncError, onOpsRejected }: UseL
     pendingCount: outbox.length,
     lastSyncedAt,
     hasLoaded,
+    apiVersion,
+    pendingOps: outbox,
     dispatch,
     sync,
     replaceLocalData
   };
+}
+
+// The record an operation refers to (for the change log).
+export function refIdOf(op: LedgerOp): string {
+  switch (op.action) {
+    case 'addDebt': return op.debt.id;
+    case 'addPayment': return op.payment.id;
+    case 'deleteDebt':
+    case 'deletePayment':
+    case 'updateDebt': return op.id;
+    case 'setClientLimit': return op.contacto;
+    case 'setUsers': return op.usuarios.join(', ');
+    case 'renameUser': return op.from;
+  }
 }

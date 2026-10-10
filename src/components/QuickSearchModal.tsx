@@ -1,4 +1,5 @@
 import { useFocusTrap } from '../hooks/useFocusTrap';
+import { AccountChip, accountTone, useAccounts } from './ui';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatMonthName } from '../utils/storage';
@@ -13,7 +14,7 @@ interface QuickSearchModalProps {
   onOpenDetails: (id: string) => void;
   onOpenNewDebt: () => void;
   onNavigateTab?: (tab: 'resumen' | 'deudas' | 'movimientos' | 'config') => void;
-  onToggleAccountView?: (view: 'Ambos' | 'Nina' | 'Nando') => void;
+  onToggleAccountView?: (view: string) => void;
 }
 
 export default function QuickSearchModal({
@@ -26,6 +27,7 @@ export default function QuickSearchModal({
   onNavigateTab,
   onToggleAccountView
 }: QuickSearchModalProps) {
+  const accounts = useAccounts();
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
   const [query, setQuery] = useState('');
 
@@ -160,11 +162,7 @@ export default function QuickSearchModal({
                         <span className="font-bold text-sm text-on-surface group-hover:text-primary transition">
                           {debt.contacto}
                         </span>
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                          debt.cuenta === 'Nina' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-warning text-on-warning'
-                        }`}>
-                          {debt.cuenta}
-                        </span>
+                        <AccountChip cuenta={debt.cuenta} />
                       </div>
                       <p className="text-xs text-on-surface-variant line-clamp-1 mt-0.5">
                         {debt.descripcion || 'Sin nota'} • Vence: {formatMonthName(debt.mesPago)}
@@ -199,18 +197,15 @@ export default function QuickSearchModal({
               >
                 Ambos
               </button>
-              <button 
-                onClick={() => { onToggleAccountView?.('Nina'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-inverse-surface text-inverse-on-surface cursor-pointer"
-              >
-                Nina
-              </button>
-              <button 
-                onClick={() => { onToggleAccountView?.('Nando'); onClose(); }}
-                className="px-2.5 py-1 rounded-full bg-warning text-on-warning cursor-pointer"
-              >
-                Nando
-              </button>
+              {accounts.map(name => (
+                <button
+                  key={name}
+                  onClick={() => { onToggleAccountView?.(name); onClose(); }}
+                  className={`px-2.5 py-1 rounded-full cursor-pointer ${accountTone(name, accounts).container}`}
+                >
+                  {name}
+                </button>
+              ))}
             </div>
           </div>
         </motion.div>

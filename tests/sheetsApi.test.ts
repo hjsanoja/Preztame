@@ -28,7 +28,7 @@ describe('fetchSnapshot', () => {
   it('sends the token and known version', async () => {
     const fn = mockFetch({ ok: true, notModified: true, version: '7' });
     const res = await fetchSnapshot(cfg, '7');
-    expect(res).toEqual({ kind: 'notModified', version: '7' });
+    expect(res).toEqual({ kind: 'notModified', version: '7', apiVersion: 6 });
     const url = new URL(fn.mock.calls[0][0] as string);
     expect(url.searchParams.get('token')).toBe('secret');
     expect(url.searchParams.get('v')).toBe('7');
@@ -58,5 +58,14 @@ describe('pushOps', () => {
     const body = JSON.parse((fn.mock.calls[0][1] as RequestInit).body as string);
     expect(body).toMatchObject({ action: 'batch', token: 'secret' });
     expect(body.ops).toHaveLength(1);
+  });
+});
+
+describe('normalizePayment', () => {
+  it('keeps bolívar payments and ignores the fields for dollar payments', async () => {
+    const { normalizePayment } = await import('../src/lib/sheetsApi');
+    expect(normalizePayment({ id: 'p', deudaId: 'd', monto: '10', moneda: 'VES', tasaCambio: '36.5', montoBs: '365' }))
+      .toMatchObject({ monto: 10, moneda: 'VES', tasaCambio: 36.5, montoBs: 365 });
+    expect(normalizePayment({ id: 'p', deudaId: 'd', monto: '10', moneda: 'USD', tasaCambio: '', montoBs: '' }).moneda).toBeUndefined();
   });
 });

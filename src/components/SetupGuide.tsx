@@ -5,6 +5,7 @@ import {
   Smartphone, Link2, Share, SquarePlus, Palette, Keyboard, Sun, Moon, SunMoon
 } from 'lucide-react';
 import { ThemePreference } from '../hooks/useTheme';
+import { useAccounts } from './ui';
 import { Debt, Payment } from '../types';
 import { formatMonthName, getOrCreateDraftToken, saveDraftToken } from '../utils/storage';
 import { fetchSnapshot, SheetsError, describeSheetsError } from '../lib/sheetsApi';
@@ -17,6 +18,8 @@ interface SetupGuideProps {
   onApplyAutoConfigLink: (link: string) => boolean;
   pwa: { isStandalone: boolean; isIos: boolean; canInstall: boolean; onInstall: () => void };
   themePreference: ThemePreference;
+  apiVersion: number | null;
+  extraCards?: React.ReactNode;
   onThemeChange: (t: ThemePreference) => void;
   onClearSettings: () => void;
   isLocalMode: boolean;
@@ -38,6 +41,8 @@ export default function SetupGuide({
   pwa,
   themePreference,
   onThemeChange,
+  apiVersion,
+  extraCards,
   onClearSettings,
   isLocalMode,
   onToggleLocal,
@@ -49,6 +54,7 @@ export default function SetupGuide({
   onSetClientLimit,
   onImportBackup
 }: SetupGuideProps) {
+  const accounts = useAccounts();
 
   const [urlInput, setUrlInput] = useState(sheetUrl);
   const [tokenInput, setTokenInput] = useState(() => sheetToken || getOrCreateDraftToken());
@@ -101,7 +107,7 @@ export default function SetupGuide({
       if (snap.kind === 'data' && !snap.version) {
         setTestResult({
           status: 'error-server',
-          message: 'La hoja respondió, pero con el código antiguo (v5) que no verifica la clave. Copia el código v6 de abajo y vuelve a implementar.'
+          message: 'La hoja respondió, pero con el código antiguo (v5) que no verifica la clave. Copia el código v7 de abajo y vuelve a implementar.'
         });
         return;
       }
@@ -268,8 +274,9 @@ export default function SetupGuide({
     const currentBase = window.location.origin + window.location.pathname;
     const encodedUrl = encodeURIComponent(sheetUrl);
     const encodedToken = encodeURIComponent(sheetToken);
-    // Suggest the opposite user
-    const targetUser = activeUser === 'Nina' ? 'Nando' : 'Nina';
+    // Suggest the next person in the list (the other device's user)
+    const i = accounts.indexOf(activeUser);
+    const targetUser = accounts.length > 1 ? accounts[(i + 1) % accounts.length] : activeUser;
     const link = `${currentBase}?scriptUrl=${encodedUrl}&token=${encodedToken}&user=${targetUser}`;
     
     navigator.clipboard.writeText(link);
@@ -291,6 +298,13 @@ export default function SetupGuide({
       
       {/* Col 1: Connection form */}
       <div className="xl:col-span-1 space-y-6">
+
+        {!isLocalMode && apiVersion !== null && apiVersion < 7 && (
+          <div role="status" className="rounded-3xl bg-warning-container text-on-warning-container p-5 space-y-2">
+            <p className="font-semibold flex items-center gap-2"><AlertTriangle className="h-5 w-5" /> Actualiza tu Apps Script a v7</p>
+            <p className="text-sm">Para editar préstamos, configurar personas, ver el historial de cambios y recibir recordatorios por correo, copia el código del paso 3 (ya trae tu clave), pégalo en Apps Script y publica una <strong>nueva versión</strong>. Tus datos no cambian.</p>
+          </div>
+        )}
 
         {/* Appearance */}
         <div className="m3-card rounded-3xl p-6 space-y-4">
@@ -320,6 +334,8 @@ export default function SetupGuide({
           </div>
           <p className="text-xs text-on-surface-variant">"Sistema" sigue el modo claro u oscuro de tu teléfono o computadora.</p>
         </div>
+
+        {extraCards}
 
         {/* Install as an app + paste auto-config link */}
         <div className="bg-surface-lowest border border-outline-variant rounded-2xl p-6 shadow-sm space-y-4">
@@ -585,9 +601,9 @@ export default function SetupGuide({
 
             {sheetUrl && (
               <div className="border-t border-outline-variant pt-4 space-y-3">
-                <h5 className="font-bold text-on-surface text-xs uppercase tracking-wider">Cargar en pareja (Nina / Nando)</h5>
+                <h5 className="font-bold text-on-surface text-xs uppercase tracking-wider">Cargar en otro dispositivo</h5>
                 <p className="text-[11px] text-outline leading-relaxed">
-                  Genera una URL directa de autoconfiguración para tu pareja. Al abrirla, se configurará este mismo Google Sheet automáticamente con la otra cuenta activa seleccionada.
+                  Copia un enlace para abrir DeudaFlow en otro teléfono ya conectado a esta misma hoja. Al abrirlo quedará seleccionada la siguiente persona de la lista; se puede cambiar arriba en cualquier momento.
                 </p>
                 <button
                   onClick={handleCopyPartnerLink}
@@ -727,7 +743,7 @@ export default function SetupGuide({
               <div className="text-sm w-full space-y-2">
                 <p className="font-extrabold text-on-surface text-on-surface">Reemplaza el código por este bloque mejorado</p>
                 <p className="text-xs text-on-surface-variant leading-relaxed">
-                  Limpia todo el código existente y pega este bloque (v6). Ya incluye tu clave de acceso, crea las hojas "Deudas", "Pagos" y "Limites" si no existen, y guarda una caché para que la app cargue mucho más rápido.
+                  Limpia todo el código existente y pega este bloque (v7). Ya incluye tu clave de acceso, crea las hojas que falten (Deudas, Pagos, Limites, Usuarios e Historial) y guarda una caché para que la app cargue mucho más rápido.
                 </p>
                 
                 {/* Apps Script Code editor display box */}

@@ -17,6 +17,7 @@ class FakeSheet {
   // Like Sheets, a leading apostrophe forces text and is not part of the value.
   appendRow(row: any[]) { this.rows.push(row.map(v => (typeof v === 'string' ? v.replace(/^'/, '') : v))); }
   deleteRow(n: number) { this.rows.splice(n - 1, 1); }
+  deleteRows(n: number, count: number) { this.rows.splice(n - 1, count); }
   getDataRange() { return this.getRange(1, 1, Math.max(this.getLastRow(), 1), Math.max(this.getLastColumn(), 1)); }
   getRange(row: number, col: number, numRows = 1, numCols = 1) {
     const sheet = this;
@@ -35,7 +36,8 @@ class FakeSheet {
     return {
       getValues: () => Array.from({ length: numRows }, (_, r) => Array.from({ length: numCols }, (_, c) => get(row + r, col + c))),
       getValue: () => get(row, col),
-      setValue: (v: any) => set(row, col, v),
+      // Like Sheets, a leading apostrophe forces text and is not part of the value.
+      setValue: (v: any) => set(row, col, typeof v === 'string' ? v.replace(/^'/, '') : v),
       setValues: (vals: any[][]) => vals.forEach((rv, r) => rv.forEach((v, c) => set(row + r, col + c, v))),
       createTextFinder: (text: string) => {
         let opts = { entire: false };
@@ -47,7 +49,12 @@ class FakeSheet {
           matchEntireCell: (b: boolean) => { opts.entire = b; return finder; },
           matchCase: () => finder,
           findNext: () => matches()[0] ?? null,
-          findAll: () => matches()
+          findAll: () => matches(),
+          replaceAllWith: (to: string) => {
+            const hits = cells().filter(({ r, c }) => (opts.entire ? String(get(r, c)) === text : String(get(r, c)).includes(text)));
+            hits.forEach(({ r, c }) => set(r, c, opts.entire ? to : String(get(r, c)).split(text).join(to)));
+            return hits.length;
+          }
         };
         return finder;
       }
@@ -58,6 +65,8 @@ class FakeSheet {
 function makeEnv() {
   const sheets = new Map<string, FakeSheet>();
   const props = new Map<string, string>();
+  const triggers: any[] = [];
+  const mails: any[] = [];
   const cache = new Map<string, string>();
   const ss = {
     getSheetByName: (n: string) => sheets.get(n) ?? null,
@@ -76,6 +85,16 @@ function makeEnv() {
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (text: string) => ({ text, setMimeType() { return this; } }) },
     Utilities: { formatDate: (d: Date, _tz: string, fmt: string) => (fmt === 'yyyy-MM' ? d.toISOString().slice(0, 7) : d.toISOString().slice(0, 10)) },
+    ScriptApp: {
+      getProjectTriggers: () => triggers,
+      deleteTrigger: (t: any) => { triggers.splice(triggers.indexOf(t), 1); },
+      newTrigger: (fn: string) => {
+        const b: any = { timeBased: () => b, everyDays: () => b, atHour: (h: number) => { b.hour = h; return b; }, create: () => { triggers.push({ getHandlerFunction: () => fn, hour: b.hour }); } };
+        return b;
+      }
+    },
+    MailApp: { sendEmail: (m: any) => mails.push(m) },
+    Session: { getEffectiveUser: () => ({ getEmail: () => 'owner@example.com' }) },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getContentText: () => JSON.stringify({ promedio: 36.5 }) }) },
     Date
   };
@@ -87,13 +106,13 @@ function makeEnv() {
   const post = (body: any) =>
     JSON.parse(context.doPost({ postData: { contents: JSON.stringify({ token: 'test-token', ...body }) } }).text);
   const batch = (...ops: any[]) => post({ action: 'batch', ops: ops.map((op, i) => ({ opId: `op-${i}`, ...op })) });
-  return { get, post, batch, sheets, context };
+  return { get, post, batch, sheets, context, triggers, mails };
 }
 
 const debt = { id: 'd-1', cuenta: 'Nina', contacto: 'Juan', tipo: 'favor', descripcion: 'x', fecha: '2026-05-10', mesPago: '2026-06', tasaCambio: 1, monto: 100, saldo: 100, estado: 'pendiente', creadoPor: 'Nina' };
 const payment = { id: 'p-1', fecha: '2026-05-12', deudaId: 'd-1', monto: 30, nota: '', registradoPor: 'Nina' };
 
-describe('Apps Script v6', () => {
+describe('Apps Script v7', () => {
   let env: ReturnType<typeof makeEnv>;
   beforeEach(() => { env = makeEnv(); });
 
@@ -116,7 +135,7 @@ describe('Apps Script v6', () => {
     const res = env.get();
     expect(res).toMatchObject({ ok: true, deudas: [], pagos: [], clientLimits: {} });
     expect(res.version).toBeTruthy();
-    expect([...env.sheets.keys()].sort()).toEqual(['Deudas', 'Limites', 'Pagos']);
+    expect([...env.sheets.keys()].sort()).toEqual(['Deudas', 'Historial', 'Limites', 'Pagos', 'Usuarios']);
   });
 
   it('applies a batch and is idempotent on retry', () => {
@@ -196,5 +215,69 @@ describe('Apps Script v6', () => {
 
   it('returns the BCV rate', () => {
     expect(env.get({ action: 'bcv' })).toMatchObject({ ok: true, rate: 36.5 });
+  });
+
+  it('reports apiVersion 7 and the configured users', () => {
+    env.batch({ action: 'setUsers', usuarios: ['Nina', 'Nando', 'Ana', 'Nina'] });
+    const res = env.get();
+    expect(res.apiVersion).toBe(7);
+    expect(res.usuarios).toEqual(['Nina', 'Nando', 'Ana']);
+    expect(env.get({ v: res.version })).toMatchObject({ notModified: true, apiVersion: 7 });
+  });
+
+  it('edits a loan and recomputes the balance from its payments', () => {
+    env.batch({ action: 'addDebt', debt }, { action: 'addPayment', payment });
+    env.batch({ action: 'updateDebt', id: 'd-1', changes: { monto: 50, contacto: ' Juan P ', mesPago: '2026-08' } });
+    expect(env.get().deudas[0]).toMatchObject({ monto: 50, saldo: 20, estado: 'pendiente', contacto: 'Juan P', mesPago: '2026-08' });
+    env.batch({ action: 'updateDebt', id: 'd-1', changes: { monto: 30 } });
+    expect(env.get().deudas[0]).toMatchObject({ saldo: 0, estado: 'saldado' });
+  });
+
+  it('renames a user everywhere', () => {
+    env.batch({ action: 'setUsers', usuarios: ['Nina', 'Nando'] }, { action: 'addDebt', debt }, { action: 'addPayment', payment });
+    env.batch({ action: 'renameUser', from: 'Nina', to: 'Carolina' });
+    const data = env.get();
+    expect(data.usuarios).toEqual(['Carolina', 'Nando']);
+    expect(data.deudas[0]).toMatchObject({ cuenta: 'Carolina', creadoPor: 'Carolina' });
+    expect(data.pagos[0].registradoPor).toBe('Carolina');
+  });
+
+  it('stores payments received in bolívares', () => {
+    env.batch({ action: 'addDebt', debt }, { action: 'addPayment', payment: { ...payment, monto: 10, moneda: 'VES', tasaCambio: 36.5, montoBs: 365 } });
+    expect(env.get().pagos[0]).toMatchObject({ monto: 10, moneda: 'VES', tasaCambio: 36.5, montoBs: 365 });
+  });
+
+  it('logs every applied change, newest first, and skips retried duplicates', () => {
+    env.batch({ action: 'addDebt', debt, by: 'Nina', desc: 'Préstamo a Juan por $100', queuedAt: Date.UTC(2026, 9, 1) });
+    env.batch({ action: 'addDebt', debt, by: 'Nina', desc: 'duplicado' });
+    env.batch({ action: 'addPayment', payment, by: 'Nando', desc: 'Abono de $30 de Juan' });
+    const res = env.get({ action: 'log', limit: '10' });
+    expect(res.log.map((e: any) => e.detalle)).toEqual(['Abono de $30 de Juan', 'Préstamo a Juan por $100']);
+    expect(res.log[1]).toMatchObject({ usuario: 'Nina', accion: 'addDebt', refId: 'd-1', fecha: '2026-10-01T00:00:00.000Z' });
+  });
+
+  it('sets up, tests and disables e-mail reminders', () => {
+    env.batch({ action: 'addDebt', debt: { ...debt, mesPago: '2020-01' } });
+    const on = env.post({ action: 'setupReminders', emails: ['a@b.co', 'no-es-correo'], hour: 7 });
+    expect(on).toMatchObject({ active: true, emails: ['a@b.co'], hour: 7 });
+    expect(env.triggers).toHaveLength(1);
+    env.post({ action: 'setupReminders', emails: [], hour: 9 });
+    expect(env.triggers).toHaveLength(1); // replaced, not duplicated
+    expect(env.post({ action: 'getReminders' }).emails).toEqual(['owner@example.com']);
+
+    env.context.enviarRecordatorios();
+    expect(env.mails).toHaveLength(1);
+    expect(env.mails[0].subject).toContain('1 vencido');
+    expect(env.mails[0].htmlBody).toContain('Juan');
+
+    expect(env.post({ action: 'testReminder' }).sent).toBe(true);
+    expect(env.post({ action: 'disableReminders' }).active).toBe(false);
+    expect(env.triggers).toHaveLength(0);
+  });
+
+  it('does not e-mail when nothing is due (except a test)', () => {
+    env.batch({ action: 'addDebt', debt: { ...debt, mesPago: '2099-01' } });
+    env.context.enviarRecordatorios();
+    expect(env.mails).toHaveLength(0);
   });
 });

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion, PanInfo } from 'motion/react';
 import { Check, ChevronDown, Copy, Download, HandCoins, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { Debt } from '../types';
-import { formatMonthName } from '../utils/storage';
+import { downloadBlob, formatMonthName } from '../utils/storage';
 import { getDueStatus } from '../lib/dueStatus';
 import { formatUsd, formatVes } from '../lib/format';
 import { normalizeTag, tagColorVar, tagLabel, tagOptions } from '../lib/tags';
@@ -10,7 +10,7 @@ import { AccountChip, Avatar, DueChip, ProgressBar, TagChip } from './ui';
 
 interface DebtsListProps {
   deudas: Debt[];
-  accountView: 'Ambos' | 'Nina' | 'Nando';
+  accountView: string;
   onOpenDetails: (id: string) => void;
   onOpenAbono: (id: string) => void;
   onOpenNewDebt: () => void;
@@ -130,12 +130,7 @@ export default function DebtsList({ deudas, accountView, onOpenDetails, onOpenAb
     const headers = ['ID', 'Cuenta', 'Contacto', 'Etiqueta', 'Concepto', 'Fecha', 'Mes de pago', 'Tasa', 'Monto', 'Saldo', 'Estado', 'Registrado por'];
     const rows = filtered.map(d => [d.id, d.cuenta, esc(d.contacto), esc(tagLabel(d.tipo)), esc(d.descripcion), d.fecha, d.mesPago, d.tasaCambio, d.monto, d.saldo, d.estado, d.creadoPor]);
     const blob = new Blob(['﻿' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `deudaflow_prestamos_${accountView.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `deudaflow_prestamos_${accountView.toLowerCase()}_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const copyReminder = async (d: Debt) => {

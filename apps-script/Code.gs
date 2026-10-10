@@ -1,5 +1,5 @@
 /* ====================================================================
- * DEUDAFLOW · GOOGLE APPS SCRIPT v6 (seguro + rápido)
+ * DEUDAFLOW · GOOGLE APPS SCRIPT v7
  * ====================================================================
  * 1. Abre tu Google Sheet > Extensiones > Apps Script.
  * 2. Borra todo el código del editor y pega este archivo completo.
@@ -9,8 +9,11 @@
  *    (Si es tu primera vez: Implementar > Nueva implementación >
  *     Aplicación web · Ejecutar como: Tú · Acceso: Cualquiera).
  *    Editar la implementación existente conserva la misma URL /exec.
- * 5. Acepta los permisos (ahora pide acceso a servicios externos para
- *    consultar la tasa BCV).
+ * 5. Acepta los permisos: servicios externos (tasa BCV), enviar correo y
+ *    ejecutar en segundo plano (recordatorios diarios de cobro).
+ *
+ * v7: editar préstamos, usuarios configurables, abonos en bolívares,
+ * historial de cambios (hoja "Historial") y recordatorios por correo.
  *
  * La clave de abajo la genera DeudaFlow. Sin ella nadie puede leer ni
  * modificar tus datos aunque conozca la URL.
@@ -20,11 +23,14 @@ var API_TOKEN = "__DEUDAFLOW_TOKEN__";
 
 var SCHEMA = {
   Deudas: ["id", "cuenta", "contacto", "tipo", "descripcion", "fecha", "monto", "saldo", "estado", "creadoPor", "mesPago", "tasaCambio"],
-  Pagos: ["id", "fecha", "deudaId", "monto", "nota", "registradoPor"],
-  Limites: ["contacto", "limite"]
+  Pagos: ["id", "fecha", "deudaId", "monto", "nota", "registradoPor", "moneda", "tasaCambio", "montoBs"],
+  Limites: ["contacto", "limite"],
+  Usuarios: ["nombre"],
+  Historial: ["fecha", "usuario", "accion", "refId", "detalle"]
 };
 
-var SCHEMA_FLAG = "df_schema_v6";
+var API_VERSION = 7;
+var SCHEMA_FLAG = "df_schema_v7";
 var VERSION_KEY = "df_version";
 var CACHE_TTL_SECONDS = 1800;
 var CACHE_CHUNK_CHARS = 40000;
@@ -37,10 +43,11 @@ function doGet(e) {
   if (denied) return json_(denied);
 
   if (p.action === "bcv") return json_(getBcvRate_());
+  if (p.action === "log") return json_({ ok: true, apiVersion: API_VERSION, log: readLog_(parseInt(p.limit, 10) || 200) });
 
   var version = getVersion_();
   if (p.v && p.v === version && p.fresh !== "1") {
-    return json_({ ok: true, notModified: true, version: version });
+    return json_({ ok: true, notModified: true, version: version, apiVersion: API_VERSION });
   }
   return jsonText_(getPayloadText_(version, p.fresh === "1"));
 }
@@ -62,6 +69,9 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     ensureSchema_(ss, false);
 
+    var reminder = handleReminderAction_(ss, body);
+    if (reminder) return json_(reminder);
+
     var ops = body.action === "batch" ? (body.ops || []) : [body];
     var versionBefore = getVersion_();
     var changed = false;
@@ -70,7 +80,10 @@ function doPost(e) {
     for (var i = 0; i < ops.length; i++) {
       var op = ops[i];
       try {
-        if (applyOp_(ss, op)) changed = true;
+        if (applyOp_(ss, op)) {
+          changed = true;
+          logOp_(ss, op);
+        }
         results.push({ opId: op.opId || null, ok: true });
       } catch (err) {
         results.push({ opId: op.opId || null, ok: false, error: String(err && err.message || err) });
@@ -79,7 +92,7 @@ function doPost(e) {
 
     if (changed) SpreadsheetApp.flush();
     var version = changed ? bumpVersion_() : versionBefore;
-    return json_({ ok: true, results: results, versionBefore: versionBefore, version: version });
+    return json_({ ok: true, apiVersion: API_VERSION, results: results, versionBefore: versionBefore, version: version });
   } finally {
     lock.releaseLock();
   }
@@ -101,6 +114,9 @@ function applyOp_(ss, op) {
     case "deleteDebt": return deleteDebt_(ss, op.id);
     case "deletePayment": return deletePayment_(ss, op.id);
     case "setClientLimit": return setClientLimit_(ss, op.contacto, op.limite);
+    case "updateDebt": return updateDebt_(ss, op.id, op.changes || {});
+    case "setUsers": return setUsers_(ss, op.usuarios || []);
+    case "renameUser": return renameUser_(ss, op.from, op.to);
     default: throw new Error("Acción desconocida: " + op.action);
   }
 }
@@ -142,7 +158,10 @@ function addPayment_(ss, p) {
     deudaId: p.deudaId,
     monto: round2_(p.monto),
     nota: p.nota,
-    registradoPor: p.registradoPor
+    registradoPor: p.registradoPor,
+    moneda: p.moneda === "VES" ? "VES" : "USD",
+    tasaCambio: p.moneda === "VES" ? (parseFloat(p.tasaCambio) || "") : "",
+    montoBs: p.moneda === "VES" ? round2_(p.montoBs) : ""
   });
 
   var saldo = Math.max(0, round2_(getCell_(sDeudas, debtRow, "saldo") - round2_(p.monto)));
@@ -210,6 +229,213 @@ function setClientLimit_(ss, contacto, limite) {
   return true;
 }
 
+var EDITABLE_DEBT_FIELDS = ["cuenta", "contacto", "tipo", "descripcion", "fecha", "mesPago", "tasaCambio", "monto"];
+
+function updateDebt_(ss, id, changes) {
+  var sheet = getSheet_(ss, "Deudas");
+  var row = findRow_(sheet, "id", id);
+  if (row < 0) throw new Error("El préstamo " + id + " no existe");
+
+  var values = {};
+  EDITABLE_DEBT_FIELDS.forEach(function (k) {
+    if (changes[k] === undefined || changes[k] === null) return;
+    var v = changes[k];
+    if (k === "monto") v = round2_(v);
+    else if (k === "tasaCambio") v = parseFloat(v) || 1;
+    else if (k === "mesPago") v = v ? "'" + v : "";
+    else v = String(v).trim();
+    values[k] = v;
+  });
+  if (values.monto !== undefined) {
+    // El saldo sigue al nuevo monto menos lo ya abonado.
+    var paid = 0;
+    var sPagos = getSheet_(ss, "Pagos");
+    findRows_(sPagos, "deudaId", id).forEach(function (r) { paid += round2_(getCell_(sPagos, r, "monto")); });
+    var saldo = Math.max(0, round2_(values.monto - paid));
+    values.saldo = saldo;
+    values.estado = saldo <= 0 ? "saldado" : "pendiente";
+  }
+  if (!Object.keys(values).length) return false;
+  setCells_(sheet, row, values);
+  return true;
+}
+
+function setUsers_(ss, usuarios) {
+  var sheet = getSheet_(ss, "Usuarios");
+  var seen = {};
+  var list = [];
+  usuarios.forEach(function (u) {
+    var name = String(u || "").trim();
+    if (name && !seen[name]) { seen[name] = true; list.push([name]); }
+  });
+  var last = sheet.getLastRow();
+  if (last > 1) sheet.deleteRows(2, last - 1);
+  if (list.length) sheet.getRange(2, 1, list.length, 1).setValues(list);
+  return true;
+}
+
+function renameUser_(ss, from, to) {
+  from = String(from || "").trim();
+  to = String(to || "").trim();
+  if (!from || !to || from === to) return false;
+  var count = 0;
+  [["Deudas", "cuenta"], ["Deudas", "creadoPor"], ["Pagos", "registradoPor"], ["Usuarios", "nombre"]].forEach(function (pair) {
+    var sheet = getSheet_(ss, pair[0]);
+    var last = sheet.getLastRow();
+    var col = headerMap_(sheet)[pair[1]];
+    if (last < 2 || col === undefined) return;
+    count += sheet.getRange(2, col + 1, last - 1, 1)
+      .createTextFinder(from).matchEntireCell(true).matchCase(true)
+      .replaceAllWith(to);
+  });
+  return count > 0;
+}
+
+// ============================ HISTORIAL DE CAMBIOS ============================
+
+function logOp_(ss, op) {
+  try {
+    var refId = op.id || (op.debt && op.debt.id) || (op.payment && op.payment.id) || op.contacto || op.from || "";
+    appendObject_(getSheet_(ss, "Historial"), {
+      fecha: op.queuedAt ? new Date(op.queuedAt) : new Date(),
+      usuario: op.by || "",
+      accion: op.action,
+      refId: String(refId),
+      detalle: op.desc || op.action
+    });
+  } catch (err) {
+    // El historial nunca debe impedir guardar el cambio.
+  }
+}
+
+function readLog_(limit) {
+  var sheet = getSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Historial");
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var n = Math.min(Math.max(limit, 1), 1000, last - 1);
+  var cols = headerMap_(sheet);
+  var rows = sheet.getRange(last - n + 1, 1, n, sheet.getLastColumn()).getValues();
+  var out = [];
+  for (var i = rows.length - 1; i >= 0; i--) {
+    var r = rows[i];
+    var f = r[cols.fecha];
+    out.push({
+      fecha: f instanceof Date ? f.toISOString() : String(f),
+      usuario: String(r[cols.usuario] || ""),
+      accion: String(r[cols.accion] || ""),
+      refId: String(r[cols.refId] || ""),
+      detalle: String(r[cols.detalle] || "")
+    });
+  }
+  return out;
+}
+
+// ============================ RECORDATORIOS POR CORREO ============================
+
+var REMINDER_HANDLER = "enviarRecordatorios";
+
+function handleReminderAction_(ss, body) {
+  var props = PropertiesService.getScriptProperties();
+  switch (body.action) {
+    case "getReminders":
+      return reminderState_();
+    case "setupReminders":
+      var emails = (body.emails || []).map(function (e) { return String(e).trim(); })
+        .filter(function (e) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e); });
+      if (!emails.length) emails = [Session.getEffectiveUser().getEmail()];
+      var hour = Math.min(23, Math.max(0, parseInt(body.hour, 10) || 8));
+      props.setProperty("df_rem_emails", JSON.stringify(emails));
+      props.setProperty("df_rem_hour", String(hour));
+      removeReminderTriggers_();
+      ScriptApp.newTrigger(REMINDER_HANDLER).timeBased().everyDays(1).atHour(hour).create();
+      return reminderState_();
+    case "disableReminders":
+      removeReminderTriggers_();
+      return reminderState_();
+    case "testReminder":
+      var state = reminderState_();
+      state.sent = sendReminder_(ss, new Date(), true);
+      return state;
+    default:
+      return null;
+  }
+}
+
+function reminderState_() {
+  var props = PropertiesService.getScriptProperties();
+  var emails = JSON.parse(props.getProperty("df_rem_emails") || "[]");
+  var active = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === REMINDER_HANDLER; });
+  return { ok: true, apiVersion: API_VERSION, active: active, emails: emails, hour: parseInt(props.getProperty("df_rem_hour"), 10) || 8 };
+}
+
+function removeReminderTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === REMINDER_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+}
+
+// Se ejecuta cada día (activador). También puedes ejecutarla desde el editor.
+function enviarRecordatorios() {
+  sendReminder_(SpreadsheetApp.getActiveSpreadsheet(), new Date(), false);
+}
+
+// Préstamos pendientes vencidos o que vencen en los próximos 7 días.
+function dueSummary_(ss, today) {
+  var tz = ss.getSpreadsheetTimeZone();
+  var todayKey = Utilities.formatDate(today, tz, "yyyy-MM-dd").split("-");
+  var t0 = Date.UTC(+todayKey[0], +todayKey[1] - 1, +todayKey[2]);
+  var vencidos = [], pronto = [];
+  readObjects_(getSheet_(ss, "Deudas"), tz).forEach(function (d) {
+    var saldo = round2_(d.saldo);
+    if (d.estado === "saldado" || saldo <= 0) return;
+    var m = /^(\d{4})-(\d{2})$/.exec(String(d.mesPago || "").replace(/^'/, ""));
+    if (!m) return;
+    var due = Date.UTC(+m[1], +m[2], 0); // último día del mes de pago
+    var days = Math.round((due - t0) / 86400000);
+    var item = { contacto: d.contacto, saldo: saldo, cuenta: d.cuenta, days: days };
+    if (days < 0) vencidos.push(item);
+    else if (days <= 7) pronto.push(item);
+  });
+  vencidos.sort(function (a, b) { return a.days - b.days; });
+  pronto.sort(function (a, b) { return a.days - b.days; });
+  return { vencidos: vencidos, pronto: pronto };
+}
+
+function sendReminder_(ss, today, force) {
+  var s = dueSummary_(ss, today);
+  if (!force && !s.vencidos.length && !s.pronto.length) return false;
+  var emails = JSON.parse(PropertiesService.getScriptProperties().getProperty("df_rem_emails") || "[]");
+  if (!emails.length) emails = [Session.getEffectiveUser().getEmail()];
+
+  var money = function (n) { return "$" + n.toFixed(2).replace(/\.00$/, ""); };
+  var total = function (list) { return list.reduce(function (a, d) { return a + d.saldo; }, 0); };
+  var rows = function (list, label) {
+    return list.map(function (d) {
+      return "<tr><td style='padding:6px 12px 6px 0'>" + d.contacto + "</td><td style='padding:6px 12px 6px 0'>" + money(d.saldo) +
+        "</td><td style='padding:6px 0;color:#555'>" + label(d) + " · " + d.cuenta + "</td></tr>";
+    }).join("");
+  };
+  var parts = [];
+  if (s.vencidos.length) parts.push(s.vencidos.length + " vencido" + (s.vencidos.length === 1 ? "" : "s"));
+  if (s.pronto.length) parts.push(s.pronto.length + " vence" + (s.pronto.length === 1 ? "" : "n") + " esta semana");
+  var subject = "DeudaFlow: " + (parts.length ? parts.join(" · ") : "sin cobros pendientes esta semana");
+
+  var html = "<div style='font-family:Arial,sans-serif;font-size:14px;color:#1b1c1f'>";
+  if (s.vencidos.length) {
+    html += "<h3 style='color:#b3261e;margin:16px 0 4px'>Vencidos · " + money(total(s.vencidos)) + "</h3><table>" +
+      rows(s.vencidos, function (d) { return "hace " + (-d.days) + " día" + (d.days === -1 ? "" : "s"); }) + "</table>";
+  }
+  if (s.pronto.length) {
+    html += "<h3 style='color:#8a5a00;margin:16px 0 4px'>Vencen pronto · " + money(total(s.pronto)) + "</h3><table>" +
+      rows(s.pronto, function (d) { return d.days === 0 ? "hoy" : "en " + d.days + " día" + (d.days === 1 ? "" : "s"); }) + "</table>";
+  }
+  if (!s.vencidos.length && !s.pronto.length) html += "<p>No tienes cobros vencidos ni que venzan esta semana. 🎉</p>";
+  html += "<p style='color:#777;margin-top:20px'>Enviado por DeudaFlow desde tu Google Sheet.</p></div>";
+
+  MailApp.sendEmail({ to: emails.join(","), subject: subject, htmlBody: html });
+  return true;
+}
+
 // ============================ LECTURA + CACHÉ ============================
 
 function getPayloadText_(version, skipCache) {
@@ -230,9 +456,15 @@ function getPayloadText_(version, skipCache) {
     if (name) clientLimits[name] = parseFloat(row.limite) || 0;
   });
 
+  var usuarios = readObjects_(getSheet_(ss, "Usuarios"), tz)
+    .map(function (row) { return String(row.nombre || "").trim(); })
+    .filter(function (n) { return n; });
+
   var text = JSON.stringify({
     ok: true,
+    apiVersion: API_VERSION,
     version: version,
+    usuarios: usuarios,
     deudas: readObjects_(getSheet_(ss, "Deudas"), tz),
     pagos: readObjects_(getSheet_(ss, "Pagos"), tz),
     clientLimits: clientLimits

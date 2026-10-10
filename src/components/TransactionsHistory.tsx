@@ -1,3 +1,4 @@
+import { AccountChip } from './ui';
 import React, { useMemo, useState } from 'react';
 import { Debt, Payment } from '../types';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
@@ -6,7 +7,7 @@ import { Undo2, PlusCircle, ArrowUpRight, ArrowDownLeft, Receipt, Trash2, Search
 interface TransactionsHistoryProps {
   deudas: Debt[];
   pagos: Payment[];
-  accountView: 'Ambos' | 'Nina' | 'Nando';
+  accountView: string;
   onDeleteDebt: (id: string) => void;
   onDeletePayment: (id: string) => void;
 }
@@ -15,7 +16,7 @@ interface CombinedTransaction {
   type: 'deuda' | 'pago';
   id: string;
   fecha: string;
-  cuenta: 'Nina' | 'Nando';
+  cuenta: string;
   contacto: string;
   concepto: string;
   monto: number;
@@ -232,15 +233,7 @@ export default function TransactionsHistory({
                       </span>
                     )}
 
-                    {t.cuenta === 'Nina' ? (
-                      <span className="px-1.5 py-0.5 text-[8px] font-bold rounded-sm bg-primary-container text-on-primary-container tabular-nums">
-                        NINA
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 text-[8px] font-bold rounded-sm bg-warning-container text-on-warning-container tabular-nums border border-warning/40">
-                        NANDO
-                      </span>
-                    )}
+                    <AccountChip cuenta={t.cuenta} />
                   </div>
 
                   <span className="text-[11px] text-outline tabular-nums">
@@ -320,15 +313,7 @@ export default function TransactionsHistory({
 
                       {/* Account indicator Badge */}
                       <td className="py-4 px-6">
-                        {t.cuenta === 'Nina' ? (
-                          <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-primary-container text-on-surface border border-primary/40">
-                            Nina
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-warning-container text-on-warning-container border border-warning/40">
-                            Nando
-                          </span>
-                        )}
+                        <AccountChip cuenta={t.cuenta} />
                       </td>
 
                       {/* Movement Flow Category badge */}

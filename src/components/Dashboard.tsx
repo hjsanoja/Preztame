@@ -13,16 +13,17 @@ import { readChartColors, ResolvedTheme } from '../hooks/useTheme';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { Avatar, DueChip, ProgressBar } from './ui';
 import UpcomingDueWidget from './UpcomingDueWidget';
-import NinaVsNandoComparison from './NinaVsNandoComparison';
+import AccountsComparison from './AccountsComparison';
 import ExchangeRateCalculator from './ExchangeRateCalculator';
 
 interface DashboardProps {
   theme: ResolvedTheme;
   deudas: Debt[];
   pagos: Payment[];
-  accountView: 'Ambos' | 'Nina' | 'Nando';
+  accountView: string;
   onOpenNewDebt: () => void;
   onOpenDetails: (id: string) => void;
+  onOpenPerson?: (name: string) => void;
 }
 
 const shortMonth = (key: string) => {
@@ -92,7 +93,7 @@ function StatTile({ icon: Icon, label, value, sub, tone, onClick }: {
   );
 }
 
-export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNewDebt, onOpenDetails }: DashboardProps) {
+export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNewDebt, onOpenDetails, onOpenPerson }: DashboardProps) {
   const [drill, setDrill] = useState<{ title: string; ids: string[] } | null>(null);
   const [flowTable, setFlowTable] = useState(false);
   const today = useMemo(() => new Date(), []);
@@ -196,7 +197,7 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
           <ol className="space-y-3">
             {top.map(t => (
               <li key={t.name}>
-                <button type="button" onClick={() => setDrill({ title: t.name, ids: t.debtIds })} className="m3-state w-full rounded-2xl p-2 -m-2 flex items-center gap-3 text-left cursor-pointer">
+                <button type="button" onClick={() => (onOpenPerson ? onOpenPerson(t.name) : setDrill({ title: t.name, ids: t.debtIds }))} className="m3-state w-full rounded-2xl p-2 -m-2 flex items-center gap-3 text-left cursor-pointer">
                   <Avatar name={t.name} size="sm" />
                   <span className="flex-1 min-w-0">
                     <span className="flex items-baseline justify-between gap-2">
@@ -317,7 +318,7 @@ export default function Dashboard({ theme, deudas, pagos, accountView, onOpenNew
       {/* Agenda + accounts + exchange rate */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         <UpcomingDueWidget deudas={viewDeudas} onOpenDetails={onOpenDetails} />
-        <NinaVsNandoComparison deudas={deudas} />
+        <AccountsComparison deudas={deudas} />
         <ExchangeRateCalculator deudas={viewDeudas} />
       </div>
 

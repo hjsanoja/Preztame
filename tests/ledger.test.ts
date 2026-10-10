@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOp, applyOps, LedgerData } from '../src/lib/ledger';
+import { accountsOf, applyOp, applyOps, LedgerData } from '../src/lib/ledger';
 import { Debt, Payment } from '../src/types';
 
 const debt = (over: Partial<Debt> = {}): Debt => ({
@@ -9,7 +9,7 @@ const debt = (over: Partial<Debt> = {}): Debt => ({
 const pay = (over: Partial<Payment> = {}): Payment => ({
   id: 'p-1', fecha: '2026-05-12', deudaId: 'd-1', monto: 30, nota: '', registradoPor: 'Nina', ...over
 });
-const base: LedgerData = { deudas: [debt()], pagos: [], clientLimits: {} };
+const base: LedgerData = { deudas: [debt()], pagos: [], clientLimits: {}, usuarios: [] };
 
 describe('applyOp', () => {
   it('adds a payment and reduces the balance', () => {
@@ -58,5 +58,28 @@ describe('applyOp', () => {
     expect(withLimit.clientLimits).toEqual({ Juan: 200 });
     const removed = applyOp(withLimit, { action: 'setClientLimit', contacto: 'juan', limite: 0 });
     expect(removed.clientLimits).toEqual({});
+  });
+
+  it('edits a loan: new amount minus what was paid', () => {
+    const paid = applyOp(base, { action: 'addPayment', payment: pay({ monto: 30 }) });
+    const edited = applyOp(paid, { action: 'updateDebt', id: 'd-1', changes: { monto: 50, contacto: ' Juan P ' } });
+    expect(edited.deudas[0]).toMatchObject({ monto: 50, saldo: 20, estado: 'pendiente', contacto: 'Juan P' });
+    expect(applyOp(paid, { action: 'updateDebt', id: 'd-1', changes: { monto: 25 } }).deudas[0]).toMatchObject({ saldo: 0, estado: 'saldado' });
+    expect(applyOp(paid, { action: 'updateDebt', id: 'd-1', changes: { descripcion: 'x' } }).deudas[0].saldo).toBe(70);
+  });
+
+  it('sets and renames users', () => {
+    const withUsers = applyOp(base, { action: 'setUsers', usuarios: [' Nina ', 'Nando', 'Nina', ''] });
+    expect(withUsers.usuarios).toEqual(['Nina', 'Nando']);
+    const renamed = applyOp(applyOp(withUsers, { action: 'addPayment', payment: pay() }), { action: 'renameUser', from: 'Nina', to: 'Carolina' });
+    expect(renamed.usuarios).toEqual(['Carolina', 'Nando']);
+    expect(renamed.deudas[0]).toMatchObject({ cuenta: 'Carolina', creadoPor: 'Carolina' });
+    expect(renamed.pagos[0].registradoPor).toBe('Carolina');
+  });
+
+  it('derives accounts from the data when none are configured', () => {
+    expect(accountsOf(base)).toEqual(['Nina', 'Nando']);
+    expect(accountsOf({ ...base, deudas: [{ ...base.deudas[0], cuenta: 'Ana' }] })).toEqual(['Nina', 'Nando', 'Ana']);
+    expect(accountsOf({ ...base, usuarios: ['Ana'] })).toEqual(['Ana']);
   });
 });

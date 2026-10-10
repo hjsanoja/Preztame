@@ -4,7 +4,8 @@ import { getDueStatus } from '../lib/dueStatus';
 import React, { useMemo } from 'react';
 import { Debt, Payment } from '../types';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
-import { X, Calendar, DollarSign, ArrowDownLeft, FileText, Trash2, Clipboard } from 'lucide-react';
+import { X, Calendar, DollarSign, ArrowDownLeft, FileText, Trash2, Clipboard, Pencil, UserRound } from 'lucide-react';
+import { formatUsd, formatVes } from '../lib/format';
 
 interface DebtDetailsModalProps {
   isOpen: boolean;
@@ -15,6 +16,8 @@ interface DebtDetailsModalProps {
   onOpenAbono: (deudaId: string) => void;
   onDeletePayment: (id: string) => void;
   activeUser: string;
+  onEdit?: (deudaId: string) => void;
+  onOpenPerson?: (contacto: string) => void;
 }
 
 export default function DebtDetailsModal({
@@ -25,7 +28,9 @@ export default function DebtDetailsModal({
   onClose,
   onOpenAbono,
   onDeletePayment,
-  activeUser
+  activeUser,
+  onEdit,
+  onOpenPerson
 }: DebtDetailsModalProps) {
   const dialogRef = useFocusTrap<HTMLDivElement>(isOpen);
 
@@ -186,7 +191,10 @@ export default function DebtDetailsModal({
                           {formatDateLabel(p.fecha)}
                         </td>
                         <td className="py-2.5 px-4 font-bold text-success tabular-nums">
-                          + {formatValue(p.monto)}
+                          + {formatUsd(p.monto)}
+                          {p.moneda === 'VES' && p.montoBs ? (
+                            <span className="block text-[11px] font-medium text-on-surface-variant">{formatVes(p.montoBs)} · tasa {p.tasaCambio}</span>
+                          ) : null}
                         </td>
                         <td className="py-2.5 px-4 text-on-surface-variant max-w-[150px] truncate" title={p.nota}>
                           {p.nota || '-'}
@@ -220,12 +228,23 @@ export default function DebtDetailsModal({
         </div>
 
         {/* Modal Footer actions */}
-        <div className="pt-3.5 border-t border-outline-variant flex justify-end shrink-0">
+        <div className="pt-3.5 border-t border-outline-variant flex flex-wrap items-center gap-2 shrink-0">
+          {onEdit && (
+            <button type="button" onClick={() => onEdit(debt.id)} className="m3-state h-10 px-4 rounded-full border border-outline text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+              <Pencil className="h-4 w-4" /> Editar
+            </button>
+          )}
+          {onOpenPerson && (
+            <button type="button" onClick={() => onOpenPerson(debt.contacto)} className="m3-state h-10 px-4 rounded-full text-primary text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+              <UserRound className="h-4 w-4" /> Ficha de {debt.contacto.split(' ')[0]}
+            </button>
+          )}
+          <span className="flex-1" />
           <button 
             onClick={onClose}
             className="m3-state h-10 px-5 rounded-full text-primary text-sm font-semibold cursor-pointer"
           >
-            Cerrar Ficha
+            Cerrar
           </button>
         </div>
 

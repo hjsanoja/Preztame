@@ -45,14 +45,22 @@
   --color-inverse-surface: var(--md-inverse-surface);
   --color-inverse-on-surface: var(--md-inverse-on-surface);
   --color-inverse-primary: var(--md-inverse-primary);
-  --color-nina: var(--md-nina);
-  --color-on-nina: var(--md-on-nina);
-  --color-nina-container: var(--md-nina-container);
-  --color-on-nina-container: var(--md-on-nina-container);
-  --color-nando: var(--md-nando);
-  --color-on-nando: var(--md-on-nando);
-  --color-nando-container: var(--md-nando-container);
-  --color-on-nando-container: var(--md-on-nando-container);
+  --color-account-1: var(--md-account-1);
+  --color-on-account-1: var(--md-on-account-1);
+  --color-account-1-container: var(--md-account-1-container);
+  --color-on-account-1-container: var(--md-on-account-1-container);
+  --color-account-2: var(--md-account-2);
+  --color-on-account-2: var(--md-on-account-2);
+  --color-account-2-container: var(--md-account-2-container);
+  --color-on-account-2-container: var(--md-on-account-2-container);
+  --color-account-3: var(--md-account-3);
+  --color-on-account-3: var(--md-on-account-3);
+  --color-account-3-container: var(--md-account-3-container);
+  --color-on-account-3-container: var(--md-on-account-3-container);
+  --color-account-4: var(--md-account-4);
+  --color-on-account-4: var(--md-on-account-4);
+  --color-account-4-container: var(--md-account-4-container);
+  --color-on-account-4-container: var(--md-on-account-4-container);
   --color-scrim: var(--md-scrim);
   --color-shadow: var(--md-shadow);
   --font-sans: "Inter", "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -102,14 +110,16 @@
   --md-inverse-surface: #2f3033;
   --md-inverse-on-surface: #f1f0f4;
   --md-inverse-primary: #a8c7fa;
-  --md-nina: #0b57d0;
-  --md-on-nina: #ffffff;
-  --md-nina-container: #d3e3fd;
-  --md-on-nina-container: #041e49;
-  --md-nando: #b45309;
-  --md-on-nando: #ffffff;
-  --md-nando-container: #ffdcc2;
-  --md-on-nando-container: #2e1500;
+  --md-account-1: #0b57d0;
+  --md-on-account-1: #ffffff;
+  --md-account-1-container: #d3e3fd;
+  --md-on-account-1-container: #041e49;
+  --md-account-2: #b45309;
+  --md-on-account-2: #ffffff;
+  --md-account-2-container: #ffdcc2;
+  --md-on-account-2-container: #2e1500;
+  --md-account-3: #006a60; --md-on-account-3: #ffffff; --md-account-3-container: #9ef2e4; --md-on-account-3-container: #00201c;
+  --md-account-4: #8e3f8a; --md-on-account-4: #ffffff; --md-account-4-container: #ffd6f6; --md-on-account-4-container: #390037;
   --md-scrim: #000000;
   --md-shadow: #000000;
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
@@ -162,14 +172,16 @@
     --md-inverse-surface: #e3e2e6;
     --md-inverse-on-surface: #2f3033;
     --md-inverse-primary: #0b57d0;
-    --md-nina: #a8c7fa;
-    --md-on-nina: #062e6f;
-    --md-nina-container: #0842a0;
-    --md-on-nina-container: #d3e3fd;
-    --md-nando: #ffb784;
-    --md-on-nando: #4f2500;
-    --md-nando-container: #713700;
-    --md-on-nando-container: #ffdcc2;
+    --md-account-1: #a8c7fa;
+    --md-on-account-1: #062e6f;
+    --md-account-1-container: #0842a0;
+    --md-on-account-1-container: #d3e3fd;
+    --md-account-2: #ffb784;
+    --md-on-account-2: #4f2500;
+    --md-account-2-container: #713700;
+    --md-on-account-2-container: #ffdcc2;
+    --md-account-3: #82d5c8; --md-on-account-3: #003731; --md-account-3-container: #005048; --md-on-account-3-container: #9ef2e4;
+    --md-account-4: #ffa9f3; --md-on-account-4: #570754; --md-account-4-container: #722570; --md-on-account-4-container: #ffd6f6;
     --md-scrim: #000000;
     --md-shadow: #000000;
     --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
@@ -226,14 +238,16 @@
   --md-inverse-surface: #e3e2e6;
   --md-inverse-on-surface: #2f3033;
   --md-inverse-primary: #0b57d0;
-  --md-nina: #a8c7fa;
-  --md-on-nina: #062e6f;
-  --md-nina-container: #0842a0;
-  --md-on-nina-container: #d3e3fd;
-  --md-nando: #ffb784;
-  --md-on-nando: #4f2500;
-  --md-nando-container: #713700;
-  --md-on-nando-container: #ffdcc2;
+  --md-account-1: #a8c7fa;
+  --md-on-account-1: #062e6f;
+  --md-account-1-container: #0842a0;
+  --md-on-account-1-container: #d3e3fd;
+  --md-account-2: #ffb784;
+  --md-on-account-2: #4f2500;
+  --md-account-2-container: #713700;
+  --md-on-account-2-container: #ffdcc2;
+  --md-account-3: #82d5c8; --md-on-account-3: #003731; --md-account-3-container: #005048; --md-on-account-3-container: #9ef2e4;
+  --md-account-4: #ffa9f3; --md-on-account-4: #570754; --md-account-4-container: #722570; --md-on-account-4-container: #ffd6f6;
   --md-scrim: #000000;
   --md-shadow: #000000;
   --md-elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 1px 3px 1px rgb(0 0 0 / 0.3);
@@ -335,3 +349,23 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--md-outline-variant); border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--md-outline); }
+
+/* Printing (estado de cuenta → PDF): only the statement document is printed. */
+@media print {
+  @page { margin: 12mm; }
+  html, body { background: #fff !important; }
+  body * { visibility: hidden !important; }
+  .df-print-area, .df-print-area * { visibility: visible !important; }
+  .df-print-container {
+    position: static !important;
+    overflow: visible !important;
+    max-height: none !important;
+    background: none !important;
+    box-shadow: none !important;
+    animation: none !important;
+    transform: none !important;
+    padding: 0 !important;
+  }
+  .df-print-area { position: absolute; left: 0; top: 0; width: 100% !important; padding: 0 !important; }
+  .df-no-print { display: none !important; }
+}
