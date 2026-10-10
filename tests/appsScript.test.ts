@@ -390,4 +390,17 @@ describe('Apps Script v9', () => {
     env.batch({ action: 'deleteClient', nombre: 'zoe' });
     expect(env.get()).toMatchObject({ clientes: [], clientLimits: {} });
   });
+
+  it('after an update, ignores the answer cached by the old script and creates the new sheets', () => {
+    env.get(); // creates sheets
+    const version = env.get().version;
+    // What a v6 script left in the cache: no apiVersion, and no Clientes sheet yet.
+    const old = JSON.stringify({ ok: true, version, deudas: [], pagos: [], clientLimits: {} });
+    env.context.CacheService.getScriptCache().put('df_payload_' + version, old);
+    env.sheets.delete('Clientes');
+    env.context.PropertiesService.getScriptProperties().setProperty('df_schema_v9', '');
+    const res = env.get();
+    expect(res.apiVersion).toBe(9);
+    expect(env.sheets.has('Clientes')).toBe(true);
+  });
 });

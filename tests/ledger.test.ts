@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { accountsOf, applyOp, applyOps, clientsOf, LedgerData, limitOf, phoneOf } from '../src/lib/ledger';
+import { accountsOf, applyOp, applyOps, clientsOf, LATEST_API, LedgerData, limitOf, phoneOf } from '../src/lib/ledger';
 import { Debt, Payment } from '../src/types';
 
 const debt = (over: Partial<Debt> = {}): Debt => ({
@@ -112,5 +114,10 @@ describe('applyOp', () => {
     data = applyOp(data, { action: 'deleteClient', nombre: 'juan pérez' });
     expect(data.clientes).toEqual([]);
     expect(data.clientLimits).toEqual({});
+  });
+
+  it('LATEST_API matches the bundled Apps Script', () => {
+    const code = readFileSync(resolve(__dirname, '../apps-script/Code.gs'), 'utf8');
+    expect(Number(/API_VERSION = (\d+)/.exec(code)?.[1])).toBe(LATEST_API);
   });
 });

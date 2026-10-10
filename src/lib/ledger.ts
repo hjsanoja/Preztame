@@ -43,6 +43,9 @@ const MIN_API: Partial<Record<LedgerOp['action'], number>> = {
 };
 export const minApiFor = (action: LedgerOp['action']) => MIN_API[action] ?? 0;
 
+// Version of apps-script/Code.gs bundled with this app (checked by a test).
+export const LATEST_API = 9;
+
 export const EMPTY_LEDGER: LedgerData = { deudas: [], pagos: [], clientLimits: {}, usuarios: [], clientes: [], telefonos: {} };
 
 export const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
