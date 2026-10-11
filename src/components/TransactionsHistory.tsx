@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, Search, Trash2, Undo2, X } from 'lucide-react';
 import { Debt, Payment } from '../types';
 import { formatDateLabel, formatMonthName } from '../utils/storage';
@@ -13,6 +13,9 @@ interface TransactionsHistoryProps {
   onDeleteDebt: (id: string) => void;
   onDeletePayment: (id: string) => void;
   onOpenDebt?: (id: string) => void;
+  // Freshly saved record to scroll to and flash (from the save notice).
+  highlightId?: string | null;
+  onHighlightShown?: () => void;
 }
 
 interface Movement {
@@ -35,7 +38,8 @@ const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 // "Movimientos": every loan handed out and every abono received, newest
 // first and grouped by month.
-export default function TransactionsHistory({ deudas, pagos, accountView, onDeleteDebt, onDeletePayment, onOpenDebt }: TransactionsHistoryProps) {
+export default function TransactionsHistory({ deudas, pagos, accountView, onDeleteDebt, onDeletePayment, onOpenDebt, highlightId, onHighlightShown }: TransactionsHistoryProps) {
+  const [flash, setFlash] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('todos');
 
@@ -88,6 +92,17 @@ export default function TransactionsHistory({ deudas, pagos, accountView, onDele
     return out;
   }, [filtered]);
 
+  useEffect(() => {
+    if (!highlightId) return;
+    setSearch('');
+    setTypeFilter('todos');
+    setFlash(highlightId);
+    const t1 = setTimeout(() => document.getElementById(`mov-${highlightId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
+    const t2 = setTimeout(() => { setFlash(null); onHighlightShown?.(); }, 3500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId]);
+
   const anyFilter = search.trim() !== '' || typeFilter !== 'todos';
   const clear = () => { setSearch(''); setTypeFilter('todos'); };
 
@@ -119,7 +134,7 @@ export default function TransactionsHistory({ deudas, pagos, accountView, onDele
       <div className="grid grid-cols-3 gap-2 rounded-2xl bg-surface-container p-3 text-center">
         <div>
           <p className="text-xs text-on-surface-variant">Prestado</p>
-          <p className="text-base sm:text-lg font-bold tabular-nums">{formatUsd(totals.prestado)}</p>
+          <p className="text-base sm:text-lg font-bold tabular-nums text-error">{formatUsd(totals.prestado)}</p>
         </div>
         <div>
           <p className="text-xs text-on-surface-variant">Cobrado</p>
@@ -147,14 +162,15 @@ export default function TransactionsHistory({ deudas, pagos, accountView, onDele
             {g.items.map(m => {
               const isLoan = m.type === 'deuda';
               return (
-                <li key={`${m.type}-${m.id}`} className="flex items-center gap-3 pl-4 pr-2 py-3">
+                <li key={`${m.type}-${m.id}`} id={`mov-${m.id}`}
+                  className={`flex items-center gap-3 pl-4 pr-2 py-3 transition-colors duration-700 ${flash === m.id ? 'bg-primary-container' : ''}`}>
                   <button
                     type="button"
                     onClick={() => onOpenDebt?.(m.debtId)}
                     disabled={!onOpenDebt}
                     className="m3-state flex-1 min-w-0 flex items-center gap-3 text-left rounded-2xl -my-1 -ml-2 p-2 cursor-pointer disabled:cursor-default"
                   >
-                    <span className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isLoan ? 'bg-surface-highest text-on-surface' : 'bg-success-container text-on-success-container'}`} aria-hidden="true">
+                    <span className={`h-10 w-10 shrink-0 rounded-full flex items-center justify-center ${isLoan ? 'bg-error-container text-on-error-container' : 'bg-success-container text-on-success-container'}`} aria-hidden="true">
                       {isLoan ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownLeft className="h-5 w-5" />}
                     </span>
                     <span className="flex-1 min-w-0">
@@ -170,7 +186,7 @@ export default function TransactionsHistory({ deudas, pagos, accountView, onDele
                       </span>
                     </span>
                     <span className="text-right shrink-0">
-                      <span className={`block font-bold tabular-nums ${isLoan ? 'text-on-surface' : 'text-success'}`}>
+                      <span className={`block font-bold tabular-nums ${isLoan ? 'text-error' : 'text-success'}`}>
                         {isLoan ? '−' : '+'}{formatUsd(m.monto)}
                       </span>
                       {m.montoBs ? <span className="block text-xs text-on-surface-variant tabular-nums">{formatVes(m.montoBs)}</span> : null}

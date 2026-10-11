@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 const FOCUSABLE = [
   'a[href]', 'button:not([disabled])', 'input:not([disabled]):not([type="hidden"])',
@@ -7,7 +8,7 @@ const FOCUSABLE = [
 
 // Keeps keyboard focus inside a dialog while it is open, focuses its first
 // field (or the dialog itself) on open, and returns focus to whatever was
-// focused before when it closes.
+// focused before when it closes. While open, the page behind does not scroll.
 export function useFocusTrap<T extends HTMLElement>(active: boolean) {
   const ref = useRef<T>(null);
 
@@ -16,6 +17,7 @@ export function useFocusTrap<T extends HTMLElement>(active: boolean) {
     const container: HTMLElement | null = ref.current;
     if (!container) return;
     const previous = document.activeElement as HTMLElement | null;
+    lockScroll();
 
     const items = (): HTMLElement[] => Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE))
       .filter((el: HTMLElement) => el.offsetParent !== null || el === document.activeElement);
@@ -45,6 +47,7 @@ export function useFocusTrap<T extends HTMLElement>(active: boolean) {
     container.addEventListener('keydown', onKeyDown);
     return () => {
       container.removeEventListener('keydown', onKeyDown);
+      unlockScroll();
       if (previous && document.contains(previous)) previous.focus({ preventScroll: true });
     };
   }, [active]);

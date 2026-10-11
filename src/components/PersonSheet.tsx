@@ -12,6 +12,7 @@ interface PersonSheetProps {
   person: PersonSummary;
   limit: number;
   phone?: string;
+  accountView?: string; // set when only one account's loans are shown
   onClose: () => void;
   onOpenDebt: (id: string) => void;
   onNewDebt: (name: string) => void;
@@ -20,7 +21,7 @@ interface PersonSheetProps {
 }
 
 // "Ficha por persona": everything about one debtor in one place.
-export default function PersonSheet({ person: p, limit, phone = '', onClose, onOpenDebt, onNewDebt, onStatement, onNotify }: PersonSheetProps) {
+export default function PersonSheet({ person: p, limit, phone = '', accountView, onClose, onOpenDebt, onNewDebt, onStatement, onNotify }: PersonSheetProps) {
   const ref = useFocusTrap<HTMLDivElement>(true);
   const [copied, setCopied] = useState(false);
   const loans = [...p.deudas].sort((a, b) => (a.estado === b.estado ? b.fecha.localeCompare(a.fecha) : a.estado === 'pendiente' ? -1 : 1));
@@ -64,6 +65,7 @@ export default function PersonSheet({ person: p, limit, phone = '', onClose, onO
             <h2 id="person-title" className="text-2xl font-semibold leading-tight truncate">{p.name}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <PunctualityChip value={p.punctuality} label={PUNCTUALITY_LABEL[p.punctuality]} />
+              {accountView && <span className="h-7 px-2.5 rounded-lg bg-secondary-container text-on-secondary-container text-xs font-semibold inline-flex items-center">Solo cuenta de {accountView}</span>}
             </div>
             <p className="mt-1 text-xs text-on-surface-variant">{detail}</p>
             {phone && (
