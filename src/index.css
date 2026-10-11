@@ -258,13 +258,38 @@
 html {
   background-color: var(--md-surface);
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* App-like: scroll yes, pinch / double-tap zoom no. */
+  touch-action: pan-x pan-y;
 }
 
 body {
   background-color: var(--md-surface);
   color: var(--md-on-surface);
   font-feature-settings: "cv11", "ss01";
+  /* Nothing may push the page sideways on a phone. */
+  overflow-x: clip;
+  overscroll-behavior-y: none;
 }
+
+/* Scrolling inside a sheet or list never drags the page behind it. */
+[role="dialog"], [role="dialog"] * { overscroll-behavior: contain; }
+
+/* Phones: inputs at 16px so iOS does not zoom in when one gets focus. */
+@media (max-width: 767px) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* iOS draws date / month fields centered, taller and wider than the box. */
+input[type="date"], input[type="month"], input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+input::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input::-webkit-datetime-edit { padding: 0; }
 
 /* Visible keyboard focus everywhere (2px ring, 2px offset). */
 :focus-visible {

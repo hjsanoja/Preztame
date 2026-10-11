@@ -36,7 +36,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from 'lucide-react';
 import { DESTINATIONS, NavigationBar, NavigationRail, TabId } from './components/Navigation';
 import { useTheme } from './hooks/useTheme';
@@ -72,6 +73,14 @@ interface Toast {
   message: string;
   type: 'success' | 'error' | 'info' | 'warning';
   action?: { label: string; onClick: () => void };
+  title?: string;
+  // Shows whether the change already reached Google Sheets.
+  track?: boolean;
+}
+
+interface ToastOptions {
+  title?: string;
+  track?: boolean;
 }
 
 interface ConfirmConfig {
@@ -170,6 +179,13 @@ export default function App() {
   const [openPersonKey, setOpenPersonKey] = useState<string | null>(null);
   const [statementKey, setStatementKey] = useState<string | null>(null);
   const [historyView, setHistoryView] = useState<'movimientos' | 'cambios'>('movimientos');
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const goToHistory = (id: string) => {
+    setSelectedDetailsId(null);
+    setHistoryView('movimientos');
+    setCurrentTab('movimientos');
+    setHighlightId(id);
+  };
 
   // Custom UI elements (Toast and Confirm boxes)
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -181,12 +197,13 @@ export default function App() {
   });
 
   // Display toast alerts
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', action?: Toast['action']) => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', action?: Toast['action'], opts: ToastOptions = {}) => {
     const id = Date.now().toString() + Math.random().toString();
-    setToasts(prev => [...prev, { id, message, type, action }]);
+    // Saves replace the previous save notice instead of stacking up.
+    setToasts(prev => [...prev.filter(t => !(opts.track && t.track)), { id, message, type, action, ...opts }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, action ? 7000 : type === 'error' || type === 'warning' ? 5000 : 3000);
+    }, opts.track ? 8000 : action ? 7000 : type === 'error' || type === 'warning' ? 5000 : 3000);
   }, []);
   const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
@@ -221,9 +238,14 @@ export default function App() {
   // The person registering on this device (falls back to the first account).
   const currentUser = accounts.includes(activeUser) ? activeUser : accounts[0];
   const currentView = accountView === 'Ambos' || accounts.includes(accountView) ? accountView : 'Ambos';
-  const people = React.useMemo(() => summarizePeople(deudas, pagos), [deudas, pagos]);
-  const openPerson = openPersonKey ? people.find(p => p.key === openPersonKey) ?? null : null;
-  const statementPerson = statementKey ? people.find(p => p.key === statementKey) ?? null : null;
+  // A person's sheet and statement follow the account filter (Nina / Nando).
+  const viewDeudas = React.useMemo(() => (currentView === 'Ambos' ? deudas : deudas.filter(d => d.cuenta === currentView)), [deudas, currentView]);
+  const people = React.useMemo(() => summarizePeople(viewDeudas, pagos), [viewDeudas, pagos]);
+  const allPeople = React.useMemo(() => summarizePeople(deudas, pagos), [deudas, pagos]);
+  const findPerson = (key: string | null) => (key ? people.find(p => p.key === key) ?? allPeople.find(p => p.key === key) ?? null : null);
+  const openPerson = findPerson(openPersonKey);
+  const personFiltered = !!openPerson && currentView !== 'Ambos' && people.some(p => p.key === openPerson.key);
+  const statementPerson = findPerson(statementKey);
   const notifications = useDueNotifications(deudas, ledger.hasLoaded);
 
   // Every change goes through here: stamped with who made it and a readable
@@ -234,6 +256,34 @@ export default function App() {
     return ok;
   };
   const syncStatus = ledger.status;
+
+  // Changes kept only on this phone (no signal): warn until they reach Sheets.
+  const [pendingSince, setPendingSince] = useState<number | null>(null);
+  const [, setTick] = useState(0);
+  const warnedOffline = React.useRef(false);
+  useEffect(() => {
+    if (isLocalMode || ledger.pendingCount === 0) {
+      if (warnedOffline.current && ledger.pendingCount === 0) {
+        showToast('Los cambios que estaban en este teléfono ya se guardaron en Google Sheets.', 'success', undefined, { title: 'Todo guardado' });
+      }
+      warnedOffline.current = false;
+      setPendingSince(null);
+      return;
+    }
+    setPendingSince(prev => prev ?? Date.now());
+    const t = setTimeout(() => setTick(n => n + 1), 10_000);
+    return () => clearTimeout(t);
+  }, [isLocalMode, ledger.pendingCount, showToast]);
+  const showPendingBanner = !isLocalMode && ledger.pendingCount > 0 && pendingSince !== null &&
+    (syncStatus === 'error' || !navigator.onLine || Date.now() - pendingSince > 10_000);
+  if (showPendingBanner) warnedOffline.current = true;
+  const syncLine = isLocalMode
+    ? { icon: HardDrive, text: 'Guardado en este dispositivo (modo de prueba)' }
+    : ledger.pendingCount === 0
+      ? { icon: CloudCheck, text: 'Guardado en Google Sheets' }
+      : syncStatus === 'error' || !navigator.onLine
+        ? { icon: CloudOff, text: 'Sin conexión: guardado solo en este teléfono. Se enviará al volver la señal.' }
+        : { icon: RefreshCw, text: 'Enviando a Google Sheets…' };
 
   const confirmRef = useFocusTrap<HTMLDivElement>(confirm.isOpen);
 
@@ -403,8 +453,10 @@ export default function App() {
       estado: 'pendiente',
       creadoPor: currentUser
     };
-    act({ action: 'addDebt', debt: newDebt }, `Préstamo a ${newDebt.contacto} por ${formatUsd(monto)} · ${newDebt.cuenta}`);
-    showToast("Préstamo registrado.", "success");
+    if (!act({ action: 'addDebt', debt: newDebt }, `Préstamo a ${newDebt.contacto} por ${formatUsd(monto)} · ${newDebt.cuenta}`)) return;
+    showToast(`${newDebt.contacto} · ${formatUsd(monto)} · cuenta de ${newDebt.cuenta}`, 'success',
+      { label: 'Ver en historial', onClick: () => goToHistory(newDebt.id) },
+      { title: 'Préstamo guardado', track: true });
   };
 
   // 2. ADD PAYMENT REPAYMENT ABONO
@@ -417,16 +469,20 @@ export default function App() {
       registradoPor: currentUser
     };
     const inBs = newPayment.moneda === 'VES' && newPayment.montoBs ? ` (${formatVes(newPayment.montoBs)} a ${newPayment.tasaCambio})` : '';
-    act({ action: 'addPayment', payment: newPayment }, `Abono de ${formatUsd(newPayment.monto)}${inBs} de ${target?.contacto ?? 'un cliente'}`);
+    if (!act({ action: 'addPayment', payment: newPayment }, `Abono de ${formatUsd(newPayment.monto)}${inBs} de ${target?.contacto ?? 'un cliente'}`)) return;
 
-    if (target && subMoney(target.saldo, newPayment.monto) <= 0) {
+    const settled = !!target && subMoney(target.saldo, newPayment.monto) <= 0;
+    if (settled) {
       import('canvas-confetti')
         .then(({ default: confetti }) => confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } }))
         .catch(e => console.error("Confetti launch failed", e));
-      showToast(`🎉 ¡DEUDA SALDADA! ${target.contacto} ha pagado su préstamo por completo.`, "success");
-    } else {
-      showToast("Abono registrado.", "success");
     }
+    showToast(
+      settled ? `${target!.contacto} pagó su préstamo por completo.` : `${target?.contacto ?? 'Cliente'} · ${formatUsd(newPayment.monto)}${inBs}`,
+      'success',
+      { label: 'Ver en historial', onClick: () => goToHistory(newPayment.id) },
+      { title: settled ? '🎉 ¡Préstamo saldado!' : 'Abono guardado', track: true }
+    );
   };
 
   // 3. DELETE DEBT
@@ -511,10 +567,10 @@ export default function App() {
       registradoPor: currentUser
     };
     if (!act({ action: 'addPayment', payment }, `Marcó como pagado el préstamo de ${target.contacto} (${formatUsd(target.saldo)})`)) return;
-    showToast(`${target.contacto}: préstamo pagado (${formatUsd(target.saldo)}).`, 'success', {
+    showToast(`${target.contacto} · ${formatUsd(target.saldo)}`, 'success', {
       label: 'Deshacer',
       onClick: () => act({ action: 'deletePayment', id: payment.id }, `Deshizo el pago completo de ${target.contacto}`)
-    });
+    }, { title: 'Préstamo marcado como pagado', track: true });
   };
 
   // 8. CLIENTS
@@ -699,9 +755,24 @@ export default function App() {
             )}
           </button>
         </div>
+        {showPendingBanner && (
+          <div role="alert" className="bg-warning-container text-on-warning-container">
+            <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-2 flex items-center gap-3">
+              <CloudOff className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <p className="flex-1 min-w-0 text-sm leading-snug">
+                <strong>{ledger.pendingCount === 1 ? '1 cambio' : `${ledger.pendingCount} cambios`} solo en este teléfono.</strong>{' '}
+                {ledger.pendingCount === 1 ? 'Se enviará' : 'Se enviarán'} a Google Sheets al volver la señal.
+              </p>
+              <button type="button" onClick={() => void ledger.sync()} className="m3-state h-9 px-3 shrink-0 rounded-full bg-on-warning-container text-warning-container text-sm font-semibold inline-flex items-center gap-1.5 cursor-pointer">
+                <RefreshCw className="h-4 w-4" /> Reintentar
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="max-w-[1280px] mx-auto px-4 sm:px-6 w-full pt-5 pb-[calc(10rem+env(safe-area-inset-bottom))] md:pb-12">
+
 
         <InstallBanner
           canInstall={pwa.canInstall}
@@ -798,6 +869,8 @@ export default function App() {
                   onDeleteDebt={handleDeleteDebt}
                   onDeletePayment={handleDeletePayment}
                   onOpenDebt={(id) => setSelectedDetailsId(id)}
+                  highlightId={highlightId}
+                  onHighlightShown={() => setHighlightId(null)}
                 />
               ) : (
                 <ChangeLogView
@@ -921,6 +994,7 @@ export default function App() {
           person={openPerson}
           limit={Object.entries(clientLimits).find(([k]) => personKey(k) === openPerson.key)?.[1] ?? 0}
           phone={clientPhone(openPerson.name)}
+          accountView={personFiltered ? currentView : undefined}
           onClose={() => setOpenPersonKey(null)}
           onOpenDebt={(id) => setSelectedDetailsId(id)}
           onNewDebt={(name) => { setNewDebtContact(name); setIsDebtFormOpen(true); }}
@@ -983,18 +1057,39 @@ export default function App() {
       >
         {toasts.map(t => {
           const Icon = t.type === 'success' ? CheckCircle2 : t.type === 'error' ? CircleAlert : t.type === 'warning' ? TriangleAlert : Info;
+          const tone = t.type === 'error' || t.type === 'warning' ? 'bg-warning-container text-on-warning-container' : 'bg-inverse-primary text-inverse-surface';
+          const SyncIcon = syncLine.icon;
           return (
             <div
               key={t.id}
-              className="pointer-events-auto flex items-start gap-3 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-3 m3-elevation-3 text-sm leading-snug animate-sheet-in"
+              className="pointer-events-auto rounded-2xl bg-inverse-surface text-inverse-on-surface p-4 m3-elevation-3 animate-sheet-in"
             >
-              <Icon className={`h-5 w-5 shrink-0 mt-px ${t.type === 'error' || t.type === 'warning' ? 'text-warning-container' : 'text-inverse-primary'}`} aria-hidden="true" />
-              <span className="flex-1">{t.message}</span>
-              {t.action && (
-                <button type="button" onClick={() => { t.action!.onClick(); dismissToast(t.id); }}
-                  className="m3-state -my-2 -mr-2 h-10 px-3 rounded-full text-sm font-semibold text-inverse-primary shrink-0 cursor-pointer">
-                  {t.action.label}
+              <div className="flex items-start gap-3">
+                <span className={`h-9 w-9 shrink-0 rounded-full flex items-center justify-center ${tone}`}>
+                  <Icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  {t.title && <p className="text-base font-semibold leading-tight">{t.title}</p>}
+                  <p className={`text-sm leading-snug ${t.title ? 'mt-0.5 opacity-90' : 'pt-1.5'}`}>{t.message}</p>
+                  {t.track && (
+                    <p className={`mt-1.5 text-xs font-semibold flex items-center gap-1.5 ${ledger.pendingCount === 0 || isLocalMode ? 'text-inverse-primary' : syncStatus === 'error' ? 'text-warning-container' : 'opacity-80'}`}>
+                      <SyncIcon className={`h-3.5 w-3.5 shrink-0 ${syncLine.icon === RefreshCw ? 'animate-spin' : ''}`} aria-hidden="true" />
+                      {syncLine.text}
+                    </p>
+                  )}
+                </div>
+                <button type="button" onClick={() => dismissToast(t.id)} aria-label="Cerrar aviso"
+                  className="m3-state -mt-1 -mr-2 h-9 w-9 shrink-0 rounded-full flex items-center justify-center opacity-70 cursor-pointer">
+                  <X className="h-4 w-4" />
                 </button>
+              </div>
+              {t.action && (
+                <div className="mt-2 flex justify-end">
+                  <button type="button" onClick={() => { t.action!.onClick(); dismissToast(t.id); }}
+                    className="m3-state h-9 px-4 rounded-full text-sm font-semibold bg-inverse-primary text-inverse-surface cursor-pointer">
+                    {t.action.label}
+                  </button>
+                </div>
               )}
             </div>
           );

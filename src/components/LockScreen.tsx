@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Delete, Fingerprint, KeyRound } from 'lucide-react';
+import { lockScroll, unlockScroll } from '../lib/scrollLock';
 
 interface LockScreenProps {
   hasBiometric: boolean;
@@ -54,6 +55,8 @@ export default function LockScreen({ hasBiometric, pinLength, onPin, onBiometric
     setPin(next);
     if (next.length === pinLength) void submit(next);
   };
+
+  useEffect(() => { lockScroll(); return unlockScroll; }, []);
 
   // Offer the fingerprint / Face ID prompt right away.
   useEffect(() => {
